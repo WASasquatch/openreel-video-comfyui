@@ -87,6 +87,8 @@ export class MasterTimelineClock {
   }
 
   setDuration(duration: number): void {
+    // console.log(`[MasterClock] setDuration called - changing from ${this.duration}s to ${duration}s`);
+    // console.trace('[MasterClock] setDuration call stack');
     this.duration = duration;
   }
 
@@ -178,18 +180,46 @@ export class MasterTimelineClock {
   }
 
   private startUpdateLoop(): void {
-    if (this.animationFrameId !== null) return;
+    if (this.animationFrameId !== null) {
+      console.log(`[MasterClock] startUpdateLoop called but animation frame already exists`);
+      return;
+    }
+
+    // console.log(`[MasterClock] Starting update loop - duration: ${this.duration}s, loopEnabled: ${this.loopEnabled}`);
 
     const update = () => {
-      if (this.state !== "playing") return;
-
-      const time = this.currentTime;
-
-      if (time >= this.duration && !this.loopEnabled) {
-        this.stop();
+      if (this.state !== "playing") {
+        console.log(`[MasterClock] Update loop stopped - state is ${this.state}`);
         return;
       }
 
+      // Calculate unclamped time for duration check
+      const elapsed =
+        (this.audioContext.currentTime - this.startAudioContextTime) *
+        this.playbackRate;
+      const unclampedTime = this.startTimelineTime + elapsed;
+
+      // Stop if we've reached the duration (check unclamped time)
+      if (this.duration > 0 && unclampedTime >= this.duration && !this.loopEnabled) {
+        // console.log(`[MasterClock] ⛔ STOPPING PLAYBACK - unclamped: ${unclampedTime.toFixed(3)}s >= duration: ${this.duration}s, loop: ${this.loopEnabled}`);
+        // Pause and seek to exact duration
+        this.pausedAt = this.duration;
+        this.state = "paused";
+        this.notifyStateChange();
+        // console.log(`[MasterClock] State set to paused, notifying subscribers`);
+        this.notifyStateChange();
+        this.notifyTimeUpdate(this.duration);
+        // console.log(`[MasterClock] Pause complete - final time: ${this.duration}s`);
+        return;
+      }
+
+      const time = this.currentTime;
+      
+      // Log every second
+      // if (Math.floor(time) !== Math.floor(time - 0.033)) {
+      //   console.log(`[MasterClock] Playing - time: ${time.toFixed(2)}s, unclamped: ${unclampedTime.toFixed(2)}s, duration: ${this.duration}s`);
+      // }
+      
       this.notifyTimeUpdate(time);
       this.animationFrameId = requestAnimationFrame(update);
     };

@@ -303,6 +303,16 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
     return null;
   }
 
+  // Skip SW registration when embedded in ComfyUI (iframe context).
+  // The SW would try to register at the host origin's root scope which
+  // conflicts with ComfyUI and can cause reload loops.
+  if (typeof window !== "undefined") {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("embedded") === "true") {
+      return null;
+    }
+  }
+
   return serviceWorkerManager.register();
 }
 

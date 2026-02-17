@@ -92,6 +92,8 @@ const ColorPresetButton: React.FC<{
 const COLOR_PRESETS: { color: RGB; label: string }[] = [
   { color: { r: 0, g: 1, b: 0 }, label: "Green" },
   { color: { r: 0, g: 0, b: 1 }, label: "Blue" },
+  { color: { r: 1, g: 1, b: 1 }, label: "White" },
+  { color: { r: 0, g: 0, b: 0 }, label: "Black" },
   { color: { r: 1, g: 0, b: 1 }, label: "Magenta" },
   { color: { r: 0, g: 1, b: 1 }, label: "Cyan" },
 ];
@@ -114,13 +116,25 @@ export const GreenScreenSection: React.FC<GreenScreenSectionProps> = ({
       const engine = await getChromaKeyEngine();
       if (!cancelled) {
         setChromaKeyEngine(engine);
+        
+        // Restore chroma key settings from clip effects
+        const clip = project.timeline.tracks
+          .flatMap(track => track.clips)
+          .find(c => c.id === clipId);
+        
+        if (clip) {
+          const chromaKeyEffect = clip.effects.find(e => e.type === 'chromaKey');
+          if (chromaKeyEffect && chromaKeyEffect.params) {
+            engine.setSettings(clipId, chromaKeyEffect.params as any);
+          }
+        }
       }
     };
     loadEngine();
     return () => {
       cancelled = true;
     };
-  }, [getChromaKeyEngine]);
+  }, [getChromaKeyEngine, clipId, project]);
 
   const settings = useMemo<ChromaKeySettings>(() => {
     if (!chromaKeyEngine) {
@@ -143,6 +157,46 @@ export const GreenScreenSection: React.FC<GreenScreenSectionProps> = ({
     );
   }, [chromaKeyEngine, clipId, project.modifiedAt]);
 
+  const saveSettingsToClip = useCallback(() => {
+    if (!chromaKeyEngine) return;
+    const currentSettings = chromaKeyEngine.getSettings(clipId);
+    if (!currentSettings) return;
+
+    useProjectStore.setState((state) => {
+      const newTracks = state.project.timeline.tracks.map((track: any) => ({
+        ...track,
+        clips: track.clips.map((clip: any) => {
+          if (clip.id !== clipId) return clip;
+          
+          const otherEffects = clip.effects.filter((e: any) => e.type !== 'chromaKey');
+          return {
+            ...clip,
+            effects: [
+              ...otherEffects,
+              {
+                id: `chromakey-${clipId}`,
+                type: 'chromaKey',
+                enabled: currentSettings.enabled,
+                params: currentSettings,
+              },
+            ],
+          };
+        }),
+      }));
+
+      return {
+        project: {
+          ...state.project,
+          timeline: {
+            ...state.project.timeline,
+            tracks: newTracks,
+          },
+          modifiedAt: Date.now(),
+        },
+      };
+    });
+  }, [chromaKeyEngine, clipId]);
+
   const handleToggleEnabled = useCallback(() => {
     if (!chromaKeyEngine) return;
     if (settings.enabled) {
@@ -150,53 +204,43 @@ export const GreenScreenSection: React.FC<GreenScreenSectionProps> = ({
     } else {
       chromaKeyEngine.enableChromaKey(clipId);
     }
-    useProjectStore.setState((state) => ({
-      project: { ...state.project, modifiedAt: Date.now() },
-    }));
-  }, [chromaKeyEngine, clipId, settings.enabled]);
+    saveSettingsToClip();
+  }, [chromaKeyEngine, clipId, settings.enabled, saveSettingsToClip]);
 
   const handleSetKeyColor = useCallback(
     (color: RGB) => {
       if (!chromaKeyEngine) return;
       chromaKeyEngine.setKeyColor(clipId, color);
-      useProjectStore.setState((state) => ({
-        project: { ...state.project, modifiedAt: Date.now() },
-      }));
+      saveSettingsToClip();
     },
-    [chromaKeyEngine, clipId],
+    [chromaKeyEngine, clipId, saveSettingsToClip],
   );
 
   const handleSetTolerance = useCallback(
     (value: number) => {
       if (!chromaKeyEngine) return;
       chromaKeyEngine.setTolerance(clipId, value);
-      useProjectStore.setState((state) => ({
-        project: { ...state.project, modifiedAt: Date.now() },
-      }));
+      saveSettingsToClip();
     },
-    [chromaKeyEngine, clipId],
+    [chromaKeyEngine, clipId, saveSettingsToClip],
   );
 
   const handleSetEdgeSoftness = useCallback(
     (value: number) => {
       if (!chromaKeyEngine) return;
       chromaKeyEngine.setEdgeSoftness(clipId, value);
-      useProjectStore.setState((state) => ({
-        project: { ...state.project, modifiedAt: Date.now() },
-      }));
+      saveSettingsToClip();
     },
-    [chromaKeyEngine, clipId],
+    [chromaKeyEngine, clipId, saveSettingsToClip],
   );
 
   const handleSetSpillSuppression = useCallback(
     (value: number) => {
       if (!chromaKeyEngine) return;
       chromaKeyEngine.setSpillSuppression(clipId, value);
-      useProjectStore.setState((state) => ({
-        project: { ...state.project, modifiedAt: Date.now() },
-      }));
+      saveSettingsToClip();
     },
-    [chromaKeyEngine, clipId],
+    [chromaKeyEngine, clipId, saveSettingsToClip],
   );
 
   const handleResetToDefaults = useCallback(() => {
@@ -208,10 +252,8 @@ export const GreenScreenSection: React.FC<GreenScreenSectionProps> = ({
       edgeSoftness: 0.1,
       spillSuppression: 0.5,
     });
-    useProjectStore.setState((state) => ({
-      project: { ...state.project, modifiedAt: Date.now() },
-    }));
-  }, [chromaKeyEngine, clipId]);
+    saveSettingsToClip();
+  }, [chromaKeyEngine, clipId, saveSettingsToClip]);
 
   const isActiveColor = (preset: RGB) =>
     Math.abs(settings.keyColor.r - preset.r) < 0.1 &&

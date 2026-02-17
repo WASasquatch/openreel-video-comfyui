@@ -123,6 +123,8 @@ export class PlaybackBridge {
       (state) => state.project,
       (project) => {
         if (this.playbackController) {
+          // console.log(`[PlaybackBridge] Project update - timeline.duration: ${project.timeline.duration}s`);
+          
           const timelineStore = useTimelineStore.getState();
           const currentTime = timelineStore.playheadPosition;
           const wasPlaying = timelineStore.playbackState === "playing";
@@ -133,6 +135,7 @@ export class PlaybackBridge {
 
           this.playbackController.scrubTo(currentTime);
           if (wasPlaying) {
+            // console.log(`[PlaybackBridge] Restarting playback after project update`);
             this.playbackController.play();
           }
         }

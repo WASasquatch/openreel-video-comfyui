@@ -35,7 +35,7 @@ import {
   NestedSequenceSection,
   AdjustmentLayerSection,
   ClipTransitionSection,
-  BackgroundRemovalSection,
+  // BackgroundRemovalSection, // Hidden - users can do this in ComfyUI
   AutoReframeSection,
   AutoCutSilenceSection,
   CropSection,
@@ -318,18 +318,27 @@ export const InspectorPanel: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clipId, updateCounter]);
 
-  // Get updateClipTransform from store
+  // Get update functions from store
   const updateClipTransform = useProjectStore(
     (state) => state.updateClipTransform,
+  );
+  const updateShapeTransform = useProjectStore(
+    (state) => state.updateShapeTransform,
   );
 
   // Transform handlers
   const handleTransformChange = useCallback(
     (changes: Partial<Transform>) => {
       if (!selectedClip) return;
-      updateClipTransform(selectedClip.id, changes);
+      
+      // Use updateShapeTransform for shapes and SVG clips
+      if (selectedClip.mediaId.startsWith("shape-") || selectedClip.mediaId.startsWith("svg-")) {
+        updateShapeTransform(selectedClip.id, changes);
+      } else {
+        updateClipTransform(selectedClip.id, changes);
+      }
     },
-    [selectedClip, updateClipTransform],
+    [selectedClip, updateClipTransform, updateShapeTransform],
   );
 
   // Chroma Key handlers using ChromaKeyEngine
@@ -683,14 +692,16 @@ export const InspectorPanel: React.FC = () => {
               </Section>
             )}
 
+            {/* Background Removal - Hidden: Users can do this in ComfyUI itself
             {clipType === "video" && (
               <Section title="Background Removal" sectionId="background-removal" defaultOpen={false}>
                 <BackgroundRemovalSection clipId={clipId} />
               </Section>
             )}
+            */}
 
             {clipType === "video" && (
-              <Section title="Auto Reframe" sectionId="auto-reframe" defaultOpen={false}>
+              <Section title="Output Size" sectionId="output-size" defaultOpen={false}>
                 <AutoReframeSection clipId={clipId} />
               </Section>
             )}

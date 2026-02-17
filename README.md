@@ -1,22 +1,39 @@
-# OpenReel Video
+# OpenReel Video - ComfyUI Edition
 
-> **The open source CapCut alternative. Professional video editing in your browser. No uploads. No installs. 100% open source.**
+> **OpenReel Video editor fork with ComfyUI integration. Professional video editing embedded in ComfyUI workflows.**
 
-OpenReel Video is a fully-featured browser-based video editor that runs entirely client-side. Built with React, TypeScript, WebCodecs, and WebGPU for professional-grade video editing without the need for expensive software or cloud processing.
+This is a modified fork of [OpenReel Video](https://github.com/augani/openreel) optimized for seamless integration with **[ComfyUI_Viewer_OpenReel_Extension](https://github.com/YOUR_USERNAME/ComfyUI_Viewer_OpenReel_Extension)**. It enables professional video editing directly within ComfyUI workflows, allowing you to edit AI-generated videos or external media files without leaving your ComfyUI environment.
 
-**[Try it Live](https://openreel.video)** | **[Documentation](CONTRIBUTING.md)** | **[Discussions](https://github.com/Augani/openreel-video/discussions)** | **[Twitter](https://x.com/python_xi)**
+**[Upstream OpenReel](https://github.com/augani/openreel)** | **[ComfyUI Extension](https://github.com/YOUR_USERNAME/ComfyUI_Viewer_OpenReel_Extension)** | **[Modifications](COMFYUI_CHANGES.md)**
 
-![OpenReel Editor](https://img.shields.io/badge/Lines%20of%20Code-130k+-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![Status](https://img.shields.io/badge/Status-Beta-orange) ![Open Source](https://img.shields.io/badge/Open%20Source-100%25-brightgreen)
+![License](https://img.shields.io/badge/License-MIT-green) ![ComfyUI](https://img.shields.io/badge/ComfyUI-Integration-blue) ![Status](https://img.shields.io/badge/Status-Active-brightgreen)
 
 ---
 
-## Why OpenReel?
+## Purpose
 
-- **100% Client-Side** - Your videos never leave your device. No uploads, no cloud processing, complete privacy.
-- **No Installation** - Works in Chrome/Edge. Just open and start editing.
-- **Professional Features** - Multi-track timeline, keyframe animations, color grading, audio effects, and more.
-- **GPU Accelerated** - WebGPU and WebCodecs for smooth 4K editing and fast exports.
-- **Free Forever** - MIT licensed, no subscriptions, no watermarks.
+This fork contains **source code modifications** specifically for ComfyUI integration:
+
+- **Vite base path** configured for ComfyUI's `/was/openreel_video/app/` routing
+- **Static imports** to prevent iframe reload loops in ComfyUI context
+- **PostMessage API** for video content injection from ComfyUI workflows
+- **Blend modes & opacity** optimized for multi-clip rendering during playback
+- **Embedded mode** with theme synchronization to match ComfyUI's UI
+- **Error handling** adapted for iframe embedding
+
+See **[COMFYUI_CHANGES.md](COMFYUI_CHANGES.md)** for detailed technical modifications.
+
+---
+
+## Why This Fork?
+
+OpenReel Video is a powerful browser-based video editor, but integrating it into ComfyUI required specific modifications:
+
+- **Routing compatibility** - Assets must resolve under ComfyUI's custom routes
+- **Iframe stability** - Prevent reload loops that break the editing session
+- **Dynamic content loading** - Videos sent via postMessage instead of URL params
+- **Performance optimizations** - Blend modes work during playback, not just preview
+- **Theme integration** - Match ComfyUI's dark/light mode automatically
 
 ---
 
@@ -89,33 +106,52 @@ OpenReel Video is a fully-featured browser-based video editor that runs entirely
 
 ---
 
-## Quick Start
+## Building for ComfyUI
 
-### Try Online
-Visit **[openreel.video](https://openreel.video)** to start editing immediately.
+This repository contains **source code only** (no built artifacts). Build it to generate the app for ComfyUI_Viewer_OpenReel_Extension.
 
-### Run Locally
+### Prerequisites
+
+- Node.js 18+
+- pnpm 9.0.0+
+
+### Build Instructions
 
 ```bash
-# Clone the repository
-git clone https://github.com/Augani/openreel-video.git
-cd openreel
+# Clone this repository
+git clone https://github.com/YOUR_USERNAME/openreel-video-comfyui.git
+cd openreel-video-comfyui
 
-# Install dependencies (requires Node.js 18+)
+# Install dependencies
 pnpm install
 
-# Start development server
-pnpm dev
-
-# Open http://localhost:5173
+# Build the app (output: apps/web/dist/)
+pnpm build
 ```
 
-### Build for Production
+### Deploy to ComfyUI Extension
 
 ```bash
-pnpm build
-pnpm preview
+# Remove old build artifacts
+rm -rf ../ComfyUI_Viewer_OpenReel_Extension/apps/openreel_app/assets
+
+# Copy new build
+cp -r apps/web/dist/* ../ComfyUI_Viewer_OpenReel_Extension/apps/openreel_app/
+
+# Restart ComfyUI to load the new build
 ```
+
+### Development Mode
+
+For local testing outside ComfyUI:
+
+```bash
+pnpm dev
+# Opens on http://localhost:5173
+# Test with: ?embedded=true&theme_bg=%231a1a2e&theme_fg=%23e0e0e0
+```
+
+**Note:** Development mode uses root path `/`. Production build uses `/was/openreel_video/app/` for ComfyUI routing.
 
 ---
 
@@ -142,132 +178,157 @@ All major browsers now support WebCodecs for hardware-accelerated video encoding
 ### Monorepo Structure
 
 ```
-openreel/
-├── apps/web/              # React frontend (~66k lines)
-│   └── src/
-│       ├── components/    # UI components
-│       │   └── editor/    # Editor panels (Timeline, Preview, Inspector)
-│       ├── stores/        # Zustand state management
-│       ├── services/      # Auto-save, shortcuts, screen recording
-│       └── bridges/       # Engine coordination
+openreel-video-comfyui/
+├── apps/web/              # React frontend with ComfyUI modifications
+│   ├── src/
+│   │   ├── components/
+│   │   │   └── editor/    # Timeline, Preview, Inspector
+│   │   ├── hooks/
+│   │   │   └── useComfyUIEmbedding.ts  # PostMessage handler
+│   │   ├── stores/        # Zustand state management
+│   │   └── lib/
+│   │       └── error-handler.ts  # Embedded mode error handling
+│   └── vite.config.ts     # ComfyUI base path: /was/openreel_video/app/
 │
-└── packages/core/         # Core engines (~59k lines)
+└── packages/core/         # Core video/audio engines
     └── src/
-        ├── video/         # Video processing, WebGPU rendering
-        ├── audio/         # Web Audio API, effects, beat detection
+        ├── video/         # Video processing, blend modes, WebGPU
+        ├── audio/         # Web Audio API, effects
         ├── graphics/      # Canvas/THREE.js, shapes, SVG
         ├── text/          # Text rendering, animations
-        ├── export/        # MP4/WebM encoding
-        └── storage/       # IndexedDB, serialization
+        └── export/        # MP4/WebM encoding
 ```
+
+### ComfyUI Integration Points
+
+**1. Vite Configuration** (`apps/web/vite.config.ts`)
+- Base path set to `/was/openreel_video/app/` for proper asset resolution
+- All JS chunks, CSS, and workers use this base path
+
+**2. Iframe Communication** (`apps/web/src/hooks/useComfyUIEmbedding.ts`)
+- Listens for `comfyui-import-video` postMessage events
+- Receives video URL, audio URL, fps, sessionId from ComfyUI workflows
+- Deduplicates imports to prevent reload loops
+
+**3. Static Imports** (`apps/web/src/App.tsx`)
+- EditorInterface uses static import instead of React.lazy()
+- Prevents module loading failures on hard refresh in iframe context
+
+**4. Error Handling** (`apps/web/src/lib/error-handler.ts`)
+- Skips `window.location.reload()` when `embedded=true`
+- Prevents reload loops that break editing sessions
+
+**5. Blend Modes** (`apps/web/src/components/editor/preview/canvas-renderers.ts`)
+- `drawFrameWithTransform` accepts `blendMode` parameter
+- Applies `ctx.globalCompositeOperation` for proper layer compositing
+- Works during both paused preview and playback
+
+**6. Multi-Clip Rendering** (`apps/web/src/components/editor/Preview.tsx`)
+- Uses `findAllClipsAtTime` instead of `findClipAtTime`
+- Renders all overlapping clips with correct blend modes and opacity
+- Respects track ordering (lower track index = rendered last = on top)
 
 ### Key Technologies
 
 - **React 18** + **TypeScript** - Type-safe UI
-- **Zustand** - Lightweight state management
+- **Zustand** - State management
 - **MediaBunny** - Video/audio processing
 - **WebCodecs** - Hardware encoding/decoding
 - **WebGPU** - GPU-accelerated rendering
-- **Web Audio API** - Professional audio processing
-- **THREE.js** - 3D transforms and effects
-- **IndexedDB** - Local project storage
-
-### Design Principles
-
-- **Action-based editing** - Every edit is an undoable action
-- **Immutable state** - Predictable updates with Zustand
-- **Engine separation** - Video, audio, graphics engines are independent
-- **Progressive enhancement** - Graceful fallbacks (WebGPU → Canvas2D)
-
----
-
-## AI-Managed Development
-
-OpenReel is an experiment in AI-assisted open source development. Claude AI helps manage:
-
-- **Issue triage** - Reviews and responds to issues
-- **Code implementation** - Writes features and fixes bugs
-- **Code review** - Maintains quality standards
-- **Documentation** - Keeps docs up to date
-
-Human oversight from Augustus ensures strategic direction and final approval on major changes. All code is public, tested, and follows best practices.
-
-**What this means for contributors:**
-- Issues get reviewed quickly (usually within 24 hours)
-- Bug fixes ship fast
-- Clear, detailed responses to questions
-- High code quality standards
+- **Web Audio API** - Audio processing
+- **THREE.js** - 3D transforms
+- **Vite** - Build tool with custom base path
 
 ---
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! This fork focuses on **ComfyUI integration improvements**.
 
 **Ways to contribute:**
-- Report bugs with reproduction steps
-- Suggest features in Discussions
-- Submit PRs for bugs or features
+- Report ComfyUI-specific bugs with reproduction steps
+- Improve iframe embedding stability
+- Optimize performance for ComfyUI workflows
+- Enhance theme synchronization
+- Fix routing or asset loading issues
 - Improve documentation
-- Write tests
-- Share effect presets
 
 **Development workflow:**
 ```bash
 # Fork and clone
-git clone https://github.com/Augani/openreel-video.git
+git clone https://github.com/YOUR_USERNAME/openreel-video-comfyui.git
+cd openreel-video-comfyui
 
 # Create feature branch
-git checkout -b feat/your-feature
+git checkout -b feat/comfyui-improvement
 
 # Make changes, then test
 pnpm typecheck
-pnpm test
 pnpm lint
 
-# Commit with conventional commits
-git commit -m "feat: add your feature"
+# Test in ComfyUI
+pnpm build
+cp -r apps/web/dist/* ../ComfyUI_Viewer_OpenReel_Extension/apps/openreel_app/
 
-# Push and open PR
-git push origin feat/your-feature
+# Commit and push
+git commit -m "feat: improve ComfyUI integration"
+git push origin feat/comfyui-improvement
+```
+
+### Syncing with Upstream OpenReel
+
+To pull updates from the original OpenReel:
+
+```bash
+# Add upstream remote (one time)
+git remote add upstream https://github.com/augani/openreel.git
+
+# Fetch and merge
+git fetch upstream
+git merge upstream/main
+
+# Resolve conflicts - KEEP these ComfyUI-specific changes:
+# - vite.config.ts base path
+# - App.tsx static imports  
+# - useComfyUIEmbedding hook
+# - error-handler.ts embedded check
+# - Blend mode changes in Preview.tsx and canvas-renderers.ts
+
+# Test and push
+pnpm build
+git push origin main
 ```
 
 ---
 
-## Roadmap
+## ComfyUI Integration Status
 
-### Completed
-- Multi-track timeline with drag-and-drop
-- Real-time video preview with GPU acceleration
-- Full editing suite (cut, trim, split, transitions)
-- Text editor with 20+ animations
-- Graphics (shapes, SVG, stickers, backgrounds)
-- Audio mixing with effects and beat detection
-- Color grading with LUT support
-- Keyframe animation system
-- Export to MP4/WebM (4K supported)
-- Screen recording
-- AI upscaling
-- Undo/redo with auto-save
+### ✅ Completed
+- **Vite base path** - Assets resolve under `/was/openreel_video/app/`
+- **Static imports** - No lazy loading to prevent iframe reload loops
+- **PostMessage API** - Video content injection from ComfyUI workflows
+- **Blend modes & opacity** - Work during playback, not just preview
+- **Multi-clip rendering** - All overlapping clips render with correct ordering
+- **Theme synchronization** - Matches ComfyUI's dark/light mode
+- **Error handling** - No reload loops in embedded mode
+- **Stable iframe loading** - Loads once, never reloads
 
-### In Progress
-- Nested sequences (timeline in timeline)
-- Motion tracking
-- More export formats (ProRes, GIF)
-- Plugin system
+### 🔄 In Progress
+- Performance optimizations for large ComfyUI workflows
+- Better error messages for ComfyUI-specific issues
+- Documentation improvements
 
-### Planned
-- Adjustment layers
-- Advanced masking
-- Audio spectral editing
-- Collaborative editing
-- Mobile optimization
+### 📋 Planned
+- Automated build releases via GitHub Actions
+- Integration tests for ComfyUI embedding
+- Performance profiling for workflow optimization
+- Enhanced theme customization options
 
 ---
 
 ## License
 
-MIT License - Use freely for personal and commercial projects.
+MIT License - Same as upstream OpenReel. Use freely for personal and commercial projects.
 
 See [LICENSE](LICENSE) for details.
 
@@ -275,28 +336,40 @@ See [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-**Built with:**
+**Forked from:**
+- [OpenReel Video](https://github.com/augani/openreel) by [@python_xi](https://x.com/python_xi) - The original browser-based video editor
+
+**Built for:**
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - Powerful node-based UI for Stable Diffusion
+- [ComfyUI_Viewer](https://github.com/YOUR_USERNAME/ComfyUI_Viewer) - Content viewer framework for ComfyUI
+
+**Technologies:**
 - [MediaBunny](https://mediabunny.dev) - Media processing
 - [React](https://react.dev) - UI framework
 - [Zustand](https://zustand-demo.pmnd.rs/) - State management
 - [THREE.js](https://threejs.org) - 3D rendering
-- [TailwindCSS](https://tailwindcss.com) - Styling
-
-**Inspired by:**
-- DaVinci Resolve - Professional tools done right
-- CapCut - Accessible editing for everyone
-- Figma - Browser-based professional software
+- [Vite](https://vitejs.dev) - Build tool
 
 ---
 
 ## Support
 
-- **GitHub Issues** - Bug reports and feature requests
-- **GitHub Discussions** - Questions and community chat
-- **Twitter/X** - [@python_xi](https://x.com/python_xi)
+**For ComfyUI integration issues:**
+- Open an issue in this repository
+- Include ComfyUI version, browser, and reproduction steps
+
+**For general OpenReel features:**
+- See upstream [OpenReel repository](https://github.com/augani/openreel)
+- Check [OpenReel Discussions](https://github.com/augani/openreel/discussions)
 
 ---
 
-**Built with care by [@python_xi](https://x.com/python_xi) and AI working together.**
+## Related Projects
 
-*Making professional video editing accessible to everyone. Forever free. Forever open source.*
+- **[OpenReel Video](https://github.com/augani/openreel)** - Original browser-based video editor
+- **[ComfyUI_Viewer_OpenReel_Extension](https://github.com/YOUR_USERNAME/ComfyUI_Viewer_OpenReel_Extension)** - ComfyUI extension that uses this fork
+- **[ComfyUI](https://github.com/comfyanonymous/ComfyUI)** - Node-based UI for Stable Diffusion
+
+---
+
+*Professional video editing integrated into ComfyUI workflows. Built on OpenReel's solid foundation.*

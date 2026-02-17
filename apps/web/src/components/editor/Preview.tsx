@@ -479,6 +479,7 @@ export const Preview: React.FC = () => {
   // Calculate the actual end time for playback (where clips actually end)
   // This needs to recalculate whenever the timeline changes
   // Includes video/audio/image clips, text clips, and shape clips
+  // If project.timeline.duration is set (non-zero), use it as the hard limit
   const actualEndTime = React.useMemo(() => {
     const tracks = project.timeline.tracks;
     let maxEnd = 0;
@@ -500,8 +501,15 @@ export const Preview: React.FC = () => {
       if (end > maxEnd) maxEnd = end;
     }
 
+    // If project duration is explicitly set, use it as the maximum
+    // This ensures playback stops at project duration even if clips extend beyond
+    const projectDuration = project.timeline.duration;
+    if (projectDuration > 0) {
+      return Math.min(maxEnd, projectDuration);
+    }
+
     return maxEnd;
-  }, [project.timeline.tracks, allTextClips, allShapeClips]);
+  }, [project.timeline.tracks, allTextClips, allShapeClips, project.timeline.duration]);
 
   // RenderBridge is guaranteed to be initialized before Preview renders (see EditorInterface)
   useEffect(() => {
@@ -1035,7 +1043,7 @@ export const Preview: React.FC = () => {
           clip.id,
           clipLocalTime,
         );
-        const mediaTime = (clip.inPoint || 0) + adjustedLocalTime;
+        let mediaTime = (clip.inPoint || 0) + adjustedLocalTime;
 
         const cacheKey = clip.mediaId;
         let cached = videoElementCacheRef.current.get(cacheKey);
@@ -1089,6 +1097,16 @@ export const Preview: React.FC = () => {
 
         cached.lastUsed = Date.now();
         const { video } = cached;
+
+        // Loop video if clip is extended beyond natural duration
+        if (video.duration > 0 && mediaTime >= video.duration) {
+          const loopDuration = video.duration - (clip.inPoint || 0);
+          if (loopDuration > 0) {
+            mediaTime = (clip.inPoint || 0) + ((mediaTime - (clip.inPoint || 0)) % loopDuration);
+          } else {
+            mediaTime = clip.inPoint || 0;
+          }
+        }
 
         const clampedTime = Math.max(
           0,
@@ -1446,6 +1464,7 @@ export const Preview: React.FC = () => {
                         animatedTransform,
                         canvas.width,
                         canvas.height,
+                        clip.blendMode,
                       );
                       hasRenderedFrame = true;
                     } else {
@@ -1455,6 +1474,7 @@ export const Preview: React.FC = () => {
                         animatedTransform,
                         canvas.width,
                         canvas.height,
+                        clip.blendMode,
                       );
                       hasRenderedFrame = true;
                     }
@@ -1465,6 +1485,7 @@ export const Preview: React.FC = () => {
                       animatedTransform,
                       canvas.width,
                       canvas.height,
+                      clip.blendMode,
                     );
                     hasRenderedFrame = true;
                   }
@@ -1759,16 +1780,7 @@ export const Preview: React.FC = () => {
 
       allVideoClips.sort((a, b) => a.clip.startTime - b.clip.startTime);
 
-      // Check for overlapping clips (multi-layer) - can't use native playback for compositing
-      for (let i = 0; i < allVideoClips.length - 1; i++) {
-        const current = allVideoClips[i];
-        const next = allVideoClips[i + 1];
-        const currentEnd = current.clip.startTime + current.clip.duration;
-        if (next.clip.startTime < currentEnd) {
-          return { canUse: false, clips: [] };
-        }
-      }
-
+      // Note: Overlapping clips (multi-layer) are now supported in native video playback with blend modes
       // Note: Text/graphics overlays are now supported in native video playback
       // They are rendered using CPU canvas2D after the video frame
 
@@ -1928,15 +1940,26 @@ export const Preview: React.FC = () => {
 
       let isActive = true;
       let rafId: number | null = null;
-      let currentClipId: string | null = null;
 
-      const findClipAtTime = (time: number) => {
+      const findAllClipsAtTime = (time: number) => {
+        const activeClips: Array<{ clip: typeof clips[0]['clip']; mediaItem: typeof clips[0]['mediaItem']; trackIndex: number }> = [];
         for (const { clip, mediaItem } of clips) {
           if (time >= clip.startTime && time < clip.startTime + clip.duration) {
-            return { clip, mediaItem };
+            // Find track index for this clip
+            const trackIndex = (() => {
+              for (let i = 0; i < timelineTracksRef.current.length; i++) {
+                const track = timelineTracksRef.current[i];
+                if (track.clips.some((c) => c.id === clip.id)) {
+                  return i;
+                }
+              }
+              return -1;
+            })();
+            activeClips.push({ clip, mediaItem, trackIndex });
           }
         }
-        return null;
+        // Sort by track index descending (higher index = background = render first)
+        return activeClips.sort((a, b) => b.trackIndex - a.trackIndex);
       };
 
       const drawFrame = async () => {
@@ -1960,9 +1983,9 @@ export const Preview: React.FC = () => {
           return;
         }
 
-        const activeClip = findClipAtTime(currentPlayhead);
+        const activeClips = findAllClipsAtTime(currentPlayhead);
 
-        if (!activeClip) {
+        if (activeClips.length === 0) {
           ctx.fillStyle = "#000000";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -1995,6 +2018,7 @@ export const Preview: React.FC = () => {
                   imgTransform,
                   canvas.width,
                   canvas.height,
+                  latestImgClip.blendMode,
                 );
               }
             }
@@ -2045,105 +2069,153 @@ export const Preview: React.FC = () => {
           return;
         }
 
-        const { clip } = activeClip;
-        const cached = videoCache.get(clip.mediaId);
-
-        if (!cached) {
-          const nowNoCached = performance.now();
-          if (nowNoCached - lastPlayheadUpdateRef.current >= PLAYHEAD_UPDATE_THROTTLE_MS) {
-            lastPlayheadUpdateRef.current = nowNoCached;
-            setPlayheadPosition(currentPlayhead);
-          }
-          rafId = requestAnimationFrame(() => { drawFrame(); });
-          return;
-        }
-
-        const { video } = cached;
-
-        if (currentClipId !== clip.id) {
-          currentClipId = clip.id;
-          if (video.paused) {
-            video.play().catch(() => {});
-          }
-        }
-
-        const clipLocalTime = currentPlayhead - clip.startTime;
-        const targetMediaTime = (clip.inPoint || 0) + clipLocalTime;
-        const drift = Math.abs(video.currentTime - targetMediaTime);
-        if (drift > 0.1) {
-          video.currentTime = targetMediaTime;
-        }
-
-        const latestClip = (() => {
-          for (const track of timelineTracksRef.current) {
-            const found = track.clips.find((c) => c.id === clip.id);
-            if (found) return found;
-          }
-          return clip;
-        })();
-
-        let transform = getAnimatedTransform(
-          (latestClip.transform as ClipTransform) || DEFAULT_TRANSFORM,
-          latestClip.keyframes,
-          clipLocalTime,
-        );
-
-        if (latestClip.emphasisAnimation && latestClip.emphasisAnimation.type !== "none") {
-          const emphasisState = applyEmphasisAnimation(
-            latestClip.emphasisAnimation,
-            clipLocalTime,
-          );
-          transform = {
-            ...transform,
-            opacity: transform.opacity * emphasisState.opacity,
-            scale: {
-              x: transform.scale.x * emphasisState.scale * emphasisState.scaleX,
-              y: transform.scale.y * emphasisState.scale * emphasisState.scaleY,
-            },
-            position: {
-              x: transform.position.x + emphasisState.offsetX * canvas.width,
-              y: transform.position.y + emphasisState.offsetY * canvas.height,
-            },
-            rotation: transform.rotation + emphasisState.rotation,
-          };
-        }
-
+        // Clear canvas
         ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Sort by track index descending (higher index = background = render first)
-        const sortedImageClips = [...imageClips].sort(
-          (a, b) => b.trackIndex - a.trackIndex,
-        );
-        for (const { clip: imgClip } of sortedImageClips) {
+        // Combine all active videos and images with their track indices, sort by track order
+        // Higher index = rendered first (appears behind), Lower index = rendered last (appears on top)
+        const allVisualClips: Array<{
+          type: 'video' | 'image';
+          trackIndex: number;
+          render: () => void;
+        }> = [];
+
+        // Add all active video clips
+        for (const { clip, trackIndex } of activeClips) {
+          const cached = videoCache.get(clip.mediaId);
+          if (!cached) continue;
+
+          const { video } = cached;
+
+          // Sync video playback
+          if (video.paused) {
+            video.play().catch(() => {});
+          }
+
+          const clipLocalTime = currentPlayhead - clip.startTime;
+          let targetMediaTime = (clip.inPoint || 0) + clipLocalTime;
+          
+          // Loop video if clip is extended beyond natural duration
+          if (video.duration > 0 && targetMediaTime >= video.duration) {
+            const loopDuration = video.duration - (clip.inPoint || 0);
+            if (loopDuration > 0) {
+              targetMediaTime = (clip.inPoint || 0) + (clipLocalTime % loopDuration);
+            } else {
+              targetMediaTime = clip.inPoint || 0;
+            }
+          }
+          
+          const drift = Math.abs(video.currentTime - targetMediaTime);
+          if (drift > 0.1) {
+            video.currentTime = targetMediaTime;
+          }
+
+          const latestClip = (() => {
+            for (const track of timelineTracksRef.current) {
+              const found = track.clips.find((c: any) => c.id === clip.id);
+              if (found) return found;
+            }
+            return clip;
+          })();
+
+          let transform = getAnimatedTransform(
+            (latestClip.transform as ClipTransform) || DEFAULT_TRANSFORM,
+            latestClip.keyframes,
+            clipLocalTime,
+          );
+
+          if (latestClip.emphasisAnimation && latestClip.emphasisAnimation.type !== "none") {
+            const emphasisState = applyEmphasisAnimation(
+              latestClip.emphasisAnimation,
+              clipLocalTime,
+            );
+            transform = {
+              ...transform,
+              opacity: transform.opacity * emphasisState.opacity,
+              scale: {
+                x: transform.scale.x * emphasisState.scale * emphasisState.scaleX,
+                y: transform.scale.y * emphasisState.scale * emphasisState.scaleY,
+              },
+              position: {
+                x: transform.position.x + emphasisState.offsetX * canvas.width,
+                y: transform.position.y + emphasisState.offsetY * canvas.height,
+              },
+              rotation: transform.rotation + emphasisState.rotation,
+            };
+          }
+
+          // console.log(`[Preview PLAYBACK] Video clip ${clip.id} at track ${trackIndex}, blend mode: ${latestClip.blendMode}`);
+          allVisualClips.push({
+            type: 'video',
+            trackIndex,
+            render: async () => {
+              // console.log(`[Preview PLAYBACK] Rendering video ${clip.id} with blend mode: ${latestClip.blendMode}`);
+              
+              // Capture video frame and apply effects (chroma key, etc.)
+              try {
+                const videoFrame = await createImageBitmap(video);
+                const processedFrame = await applyEffectsToFrame(clip.id, videoFrame);
+                drawFrameWithTransform(ctx, processedFrame, transform, canvas.width, canvas.height, latestClip.blendMode);
+              } catch (error) {
+                // console.warn(`[Preview PLAYBACK] Failed to process video frame for ${clip.id}:`, error);
+                // Fallback to direct rendering if processing fails
+                drawFrameWithTransform(ctx, video, transform, canvas.width, canvas.height, latestClip.blendMode);
+              }
+            }
+          });
+        }
+
+        // Add image clips
+        for (const { clip: imgClip, trackIndex } of imageClips) {
           if (
             currentPlayhead >= imgClip.startTime &&
             currentPlayhead < imgClip.startTime + imgClip.duration
           ) {
             const bitmap = imageBitmapCache.get(imgClip.id);
             if (bitmap) {
-              const latestImgClip = (() => {
-                for (const track of timelineTracksRef.current) {
-                  const found = track.clips.find((c) => c.id === imgClip.id);
-                  if (found) return found;
+              allVisualClips.push({
+                type: 'image',
+                trackIndex,
+                render: () => {
+                  const latestImgClip = (() => {
+                    for (const track of timelineTracksRef.current) {
+                      const found = track.clips.find((c) => c.id === imgClip.id);
+                      if (found) return found;
+                    }
+                    return imgClip;
+                  })();
+                  const imgClipLocalTime = currentPlayhead - imgClip.startTime;
+                  const imgTransform = getAnimatedTransform(
+                    (latestImgClip.transform as ClipTransform) || DEFAULT_TRANSFORM,
+                    latestImgClip.keyframes,
+                    imgClipLocalTime,
+                  );
+                  drawFrameWithTransform(
+                    ctx,
+                    bitmap,
+                    imgTransform,
+                    canvas.width,
+                    canvas.height,
+                    latestImgClip.blendMode,
+                  );
                 }
-                return imgClip;
-              })();
-              const imgClipLocalTime = currentPlayhead - imgClip.startTime;
-              const imgTransform = getAnimatedTransform(
-                (latestImgClip.transform as ClipTransform) || DEFAULT_TRANSFORM,
-                latestImgClip.keyframes,
-                imgClipLocalTime,
-              );
-              drawFrameWithTransform(
-                ctx,
-                bitmap,
-                imgTransform,
-                canvas.width,
-                canvas.height,
-              );
+              });
             }
           }
+        }
+
+        // Sort by track index descending (higher index = background = render first)
+        allVisualClips.sort((a, b) => b.trackIndex - a.trackIndex);
+
+        // console.log(`[Preview] Rendering ${allVisualClips.length} visual clips in order:`, 
+        //   allVisualClips.map(v => `${v.type} (index ${v.trackIndex})`).join(', ')
+        // );
+
+        // Render all visual clips in proper track order
+        for (const visualClip of allVisualClips) {
+          // console.log(`[Preview] Drawing ${visualClip.type} at track index ${visualClip.trackIndex}`);
+          await visualClip.render();
         }
 
         const allShapeClipsData = allShapeClipsRef.current;
@@ -2155,8 +2227,6 @@ export const Preview: React.FC = () => {
           allTextClipsRef.current,
           currentPlayhead,
         );
-
-        drawFrameWithTransform(ctx, video, transform, canvas.width, canvas.height);
 
         // Use CPU canvas2D for all overlays - more reliable than GPU compositing
         // Render all text/graphics overlays (they're above the video since backgrounds are separate)
@@ -4676,6 +4746,14 @@ export const Preview: React.FC = () => {
 
           {/* Processing Overlay */}
           <ProcessingOverlay />
+
+          {/* Resolution Indicator */}
+          <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded text-[10px] font-mono text-white/90 pointer-events-none z-10 border border-white/10">
+            {settings.width}×{settings.height}
+            <span className="text-white/60 ml-1.5">
+              ({(settings.width / settings.height).toFixed(2)})
+            </span>
+          </div>
 
           {/* Motion Path Overlay */}
           {motionPathMode && motionPathConfig && motionPathClip && (

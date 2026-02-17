@@ -148,11 +148,13 @@ export class BackgroundRemovalEngine {
 
   private generateSimpleMask(
     imageData: ImageData,
-    _threshold: number,
+    threshold: number,
   ): ImageData {
     const { data, width, height } = imageData;
     const mask = new ImageData(width, height);
 
+    // Simple edge detection to identify foreground (subject)
+    // This is a placeholder - real implementation would use AI segmentation
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i];
       const g = data[i + 1];
@@ -161,9 +163,12 @@ export class BackgroundRemovalEngine {
       const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
       const saturation = this.calculateSaturation(r, g, b);
 
+      // Heuristic: foreground typically has mid-range luminance and some color
+      // Background is often very bright/dark or low saturation
       const isForeground =
-        luminance > 0.1 && luminance < 0.95 && saturation > 0.05;
+        luminance > 0.15 && luminance < 0.85 && saturation > threshold * 0.1;
 
+      // Mask: 255 = keep (foreground), 0 = remove/replace (background)
       const alpha = isForeground ? 255 : 0;
       mask.data[i] = alpha;
       mask.data[i + 1] = alpha;

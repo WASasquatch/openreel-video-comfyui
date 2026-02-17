@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import {
   Smartphone,
   Monitor,
@@ -9,8 +9,6 @@ import {
 } from "lucide-react";
 import { Slider } from "@openreel/ui";
 import {
-  getAutoReframeEngine,
-  initializeAutoReframeEngine,
   type ReframeSettings,
   type AspectRatioPreset,
   type PlatformPreset,
@@ -40,7 +38,6 @@ const PLATFORM_ICONS: Record<PlatformPreset, React.ReactNode> = {
 };
 
 export const AutoReframeSection: React.FC<AutoReframeSectionProps> = ({
-  clipId,
   onReframeComplete,
 }) => {
   const updateProjectDimensions = useProjectStore(
@@ -49,37 +46,12 @@ export const AutoReframeSection: React.FC<AutoReframeSectionProps> = ({
   const [reframeSettings, setReframeSettings] = useState<ReframeSettings>(
     DEFAULT_REFRAME_SETTINGS,
   );
-  const [isInitializing, setIsInitializing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(false);
   const [isApplied, setIsApplied] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
   const [selectedPlatform, setSelectedPlatform] =
     useState<PlatformPreset | null>("tiktok");
-
-  useEffect(() => {
-    const engine = getAutoReframeEngine();
-    if (engine) {
-      setIsInitialized(engine.isInitialized());
-    }
-  }, [clipId]);
-
-  const handleInitialize = useCallback(async () => {
-    setIsInitializing(true);
-    try {
-      const engine = initializeAutoReframeEngine();
-      await engine.initialize((prog, msg) => {
-        setProgress(prog);
-        setProgressMessage(msg);
-      });
-      setIsInitialized(true);
-    } catch (error) {
-      console.error("Failed to initialize auto-reframe:", error);
-    } finally {
-      setIsInitializing(false);
-    }
-  }, []);
 
   const updateLocalSettings = useCallback(
     (updates: Partial<ReframeSettings>) => {
@@ -112,74 +84,55 @@ export const AutoReframeSection: React.FC<AutoReframeSectionProps> = ({
     [updateLocalSettings],
   );
 
-  const handleAnalyze = useCallback(async () => {
+  const handleApplySize = useCallback(async () => {
     setIsProcessing(true);
     setProgress(0);
-    setProgressMessage("Initializing...");
+    setProgressMessage("Updating canvas size...");
 
     try {
-      if (!isInitialized) {
-        setProgressMessage("Loading AI engine...");
-        setProgress(10);
-        await handleInitialize();
-      }
-
-      const engine = getAutoReframeEngine();
-      if (!engine) {
-        throw new Error("Engine not available");
-      }
-
-      setProgressMessage("Configuring reframe settings...");
-      setProgress(30);
-
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      setProgressMessage("Applying smart crop configuration...");
-      setProgress(60);
-
       const targetConfig =
         ASPECT_RATIO_PRESETS[reframeSettings.targetAspectRatio];
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      console.log('[AutoReframe] Applying canvas size:', {
+        targetAspectRatio: reframeSettings.targetAspectRatio,
+        targetConfig,
+        newDimensions: { width: targetConfig.width, height: targetConfig.height }
+      });
 
-      setProgressMessage("Updating project settings...");
-      setProgress(80);
+      setProgress(50);
 
-      await updateProjectDimensions({
+      const updateResult = await updateProjectDimensions({
         width: targetConfig.width,
         height: targetConfig.height,
       });
 
-      setProgressMessage("Finalizing...");
-      setProgress(90);
-
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      console.log('[AutoReframe] Update result:', updateResult);
 
       setProgress(100);
       setProgressMessage("Complete!");
       setIsApplied(true);
 
-      const result: ReframeResult = {
+      const reframeResult: ReframeResult = {
         keyframes: [],
         outputWidth: targetConfig.width,
         outputHeight: targetConfig.height,
         success: true,
-        message: `Configured for ${targetConfig.name} (${targetConfig.width}x${targetConfig.height})`,
+        message: `Canvas resized to ${targetConfig.name} (${targetConfig.width}x${targetConfig.height})`,
       };
 
-      onReframeComplete?.(result);
+      onReframeComplete?.(reframeResult);
 
       const platformName = selectedPlatform
         ? PLATFORM_PRESETS[selectedPlatform].name
         : reframeSettings.targetAspectRatio;
       toast.success(
-        "Auto Reframe Applied",
-        `Project resized to ${platformName} (${targetConfig.width}x${targetConfig.height})`,
+        "Canvas Resized",
+        `Project output size changed to ${platformName} (${targetConfig.width}x${targetConfig.height})`,
       );
     } catch (error) {
-      console.error("Auto-reframe failed:", error);
+      console.error("Canvas resize failed:", error);
       toast.error(
-        "Auto Reframe Failed",
+        "Resize Failed",
         error instanceof Error ? error.message : "Unknown error",
       );
       setIsApplied(false);
@@ -187,8 +140,6 @@ export const AutoReframeSection: React.FC<AutoReframeSectionProps> = ({
       setIsProcessing(false);
     }
   }, [
-    isInitialized,
-    handleInitialize,
     reframeSettings,
     selectedPlatform,
     onReframeComplete,
@@ -354,24 +305,24 @@ export const AutoReframeSection: React.FC<AutoReframeSectionProps> = ({
         )}
 
         <button
-          onClick={handleAnalyze}
-          disabled={isInitializing || isProcessing}
+          onClick={handleApplySize}
+          disabled={isProcessing}
           className="w-full py-2 rounded text-[11px] font-medium transition-colors flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover disabled:bg-primary/50 text-white"
         >
-          {isInitializing || isProcessing ? (
+          {isProcessing ? (
             <>
               <Loader2 size={14} className="animate-spin" />
-              {isInitializing ? "Initializing..." : "Analyzing..."}
+              Resizing Canvas...
             </>
           ) : isApplied ? (
             <>
               <CheckCircle size={14} />
-              Applied - Click to Reanalyze
+              Applied - Click to Change Again
             </>
           ) : (
             <>
               <Play size={14} />
-              Analyze & Reframe
+              Apply Canvas Size
             </>
           )}
         </button>

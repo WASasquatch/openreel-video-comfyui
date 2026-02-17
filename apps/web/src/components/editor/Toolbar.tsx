@@ -21,6 +21,8 @@ import {
   Diamond,
   Sparkles,
   Play,
+  Upload,
+  ExternalLink,
 } from "lucide-react";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
@@ -674,6 +676,102 @@ export const Toolbar: React.FC = () => {
     [importMedia],
   );
 
+  // ComfyUI embedded mode detection
+  const isEmbedded = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embedded') === 'true';
+  const [isSendingToOutput, setIsSendingToOutput] = useState(false);
+
+  const handleSendToOutput = useCallback(async () => {
+    console.log("[OpenReel] Send to Output clicked, project tracks:", project.timeline?.tracks?.length, "clips:", project.timeline?.tracks?.flatMap(t => t.clips).length);
+    setIsSendingToOutput(true);
+    setExportState({ isExporting: true, progress: 0, phase: "Preparing export...", error: null, complete: false });
+    try {
+      const engine = getExportEngine();
+      console.log("[OpenReel] Initializing export engine...");
+      await engine.initialize();
+      console.log("[OpenReel] Export engine initialized");
+
+      const videoSettings: Partial<VideoExportSettings> = {
+        width: project.settings.width,
+        height: project.settings.height,
+        frameRate: project.settings.frameRate,
+        format: "mp4",
+        codec: "h264",
+        bitrate: 12000,
+        quality: 85,
+      };
+
+      console.log("[OpenReel] Starting FFmpeg export with settings:", videoSettings);
+      const generator = engine.exportVideoWithFFmpeg(project, videoSettings);
+      let finalResult: ExportResult | undefined;
+
+      while (true) {
+        const { value, done } = await generator.next();
+        if (done) {
+          finalResult = value;
+          break;
+        }
+        setExportState((prev: ExportState) => ({
+          ...prev,
+          progress: value.progress * 100,
+          phase: value.phase === "complete" ? "Complete!" : `${value.phase}...`,
+        }));
+      }
+
+      console.log("[OpenReel] Export result:", { success: finalResult?.success, blobSize: finalResult?.blob?.size, error: finalResult?.error });
+
+      if (finalResult?.success && finalResult.blob) {
+        setExportState((prev: ExportState) => ({ ...prev, phase: "Uploading to ComfyUI..." }));
+
+        const formData = new FormData();
+        const timestamp = Date.now();
+        const filename = `openreel_export_${timestamp}.mp4`;
+        formData.append("image", new File([finalResult.blob], filename, { type: "video/mp4" }));
+        formData.append("type", "input");
+        formData.append("overwrite", "true");
+
+        console.log("[OpenReel] Uploading", filename, "size:", finalResult.blob.size);
+        const uploadResponse = await fetch("/upload/image", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (uploadResponse.ok) {
+          const uploadResult = await uploadResponse.json();
+          const savedFilename = uploadResult.name || filename;
+          console.log("[OpenReel] Upload success:", savedFilename);
+
+          // Notify parent iframe
+          if (window.parent !== window) {
+            window.parent.postMessage({
+              type: "openreel-video-output",
+              filename: savedFilename,
+            }, "*");
+            console.log("[OpenReel] postMessage sent to parent:", savedFilename);
+          }
+
+          toast.success("Sent to Output", `Video saved as ${savedFilename}`);
+        } else {
+          throw new Error("Upload failed: " + uploadResponse.statusText);
+        }
+      } else {
+        throw new Error(finalResult?.error?.message || "Export failed");
+      }
+    } catch (error) {
+      console.error("[OpenReel] Send to Output error:", error);
+      const msg = error instanceof Error ? error.message : "Send to output failed";
+      toast.error("Send to Output Failed", msg);
+    } finally {
+      setIsSendingToOutput(false);
+      setExportState({
+        isExporting: false,
+        progress: 0,
+        phase: "",
+        error: null,
+        complete: false,
+      });
+    }
+  }, [project]);
+
   const projectRes = `${project.settings.width}×${project.settings.height}`;
   const aspectRatio = project.settings.width / project.settings.height;
   const isVertical = aspectRatio < 0.9;
@@ -823,9 +921,14 @@ export const Toolbar: React.FC = () => {
               />
             </svg>
           </div>
-          <span className="text-lg font-medium text-text-primary tracking-wide hidden lg:block">
-            Open Reel
-          </span>
+          <div className="hidden lg:flex flex-col leading-tight">
+            <span className="text-lg font-medium text-text-primary tracking-wide">
+              Open Reel
+            </span>
+            <span className="absolute top-[40px] left-[98px] text-[9px] font-medium text-text-secondary tracking-widest opacity-60">
+              for <span className="font-bold" style={{ color: '#e4f541' }}>ComfyUI</span>
+            </span>
+          </div>
         </div>
         <div className="h-6 w-px bg-border hidden md:block" />
         <ProjectSwitcher />
@@ -899,25 +1002,47 @@ export const Toolbar: React.FC = () => {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-lg hover:bg-background-elevated text-text-secondary hover:text-text-primary transition-colors"
-            >
-              {themeMode === "light" ? (
-                <Sun size={16} />
-              ) : themeMode === "dark" ? (
-                <Moon size={16} />
-              ) : (
-                <SunMoon size={16} />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Theme: {themeMode}</p>
-          </TooltipContent>
-        </Tooltip>
+        {!isEmbedded && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg hover:bg-background-elevated text-text-secondary hover:text-text-primary transition-colors"
+              >
+                {themeMode === "light" ? (
+                  <Sun size={16} />
+                ) : themeMode === "dark" ? (
+                  <Moon size={16} />
+                ) : (
+                  <SunMoon size={16} />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Theme: {themeMode}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+
+        {isEmbedded && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.search = '';
+                  window.open(url.toString(), '_blank');
+                }}
+                className="p-2 rounded-lg hover:bg-background-elevated text-text-secondary hover:text-text-primary transition-colors"
+              >
+                <ExternalLink size={16} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Launch in new tab</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -983,6 +1108,26 @@ export const Toolbar: React.FC = () => {
             <p>Screen Recording</p>
           </TooltipContent>
         </Tooltip>
+
+        {isEmbedded && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleSendToOutput}
+                disabled={isSendingToOutput || exportState.isExporting}
+                className="h-10 px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] transform hover:-translate-y-0.5"
+              >
+                <Upload size={14} />
+                <span className="text-sm tracking-wider">
+                  {isSendingToOutput ? "SENDING..." : "SEND TO OUTPUT"}
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Export and send video to ComfyUI</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         <div className="relative">
           {exportState.isExporting ? (

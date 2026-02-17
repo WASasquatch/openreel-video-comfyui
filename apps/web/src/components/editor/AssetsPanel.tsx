@@ -30,7 +30,6 @@ import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import type { MediaItem } from "@openreel/core";
 import { AspectRatioMatchDialog } from "./dialogs/AspectRatioMatchDialog";
-import { AIGenTab } from "./AIGenTab";
 import { IconButton, Input, ScrollArea } from "@openreel/ui";
 
 const formatDuration = (seconds: number): string => {
@@ -492,17 +491,23 @@ export const AssetsPanel: React.FC = () => {
 
   const handleImportBackground = useCallback(
     async (preset: BackgroundPreset) => {
+      console.log("[AssetsPanel] Starting background import:", preset.name);
       setGeneratingBackground(preset.id);
       try {
         const { width, height } = project.settings;
+        console.log("[AssetsPanel] Generating blob:", width, "x", height);
         const blob = await generateBackgroundBlob(preset, width, height);
+        console.log("[AssetsPanel] Blob generated:", blob.size, "bytes");
         const file = new File([blob], `${preset.name}_${width}x${height}.png`, {
           type: "image/png",
         });
-        await importMedia(file);
+        console.log("[AssetsPanel] Calling importMedia...");
+        const result = await importMedia(file);
+        console.log("[AssetsPanel] Import result:", result);
       } catch (error) {
-        console.error("Failed to generate background:", error);
+        console.error("[AssetsPanel] Failed to generate background:", error);
       } finally {
+        console.log("[AssetsPanel] Clearing loading state");
         setGeneratingBackground(null);
       }
     },
@@ -580,19 +585,7 @@ export const AssetsPanel: React.FC = () => {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(34,197,94,0.5)]" />
           )}
         </button>
-        <button
-          onClick={() => setActiveTab("ai")}
-          className={`pb-3 transition-all relative ${
-            activeTab === "ai"
-              ? "text-primary"
-              : "text-primary/70 hover:text-primary"
-          }`}
-        >
-          AI Gen
-          {activeTab === "ai" && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full shadow-[0_-2px_8px_rgba(34,197,94,0.5)]" />
-          )}
-        </button>
+        {/* AI Gen tab hidden - cloud services require CORS configuration */}
       </div>
 
       {/* Search - only show for media tab */}
@@ -1010,8 +1003,7 @@ export const AssetsPanel: React.FC = () => {
         </ScrollArea>
       )}
 
-      {/* AI Tab Content */}
-      {activeTab === "ai" && <AIGenTab />}
+      {/* AI Tab Content - hidden, cloud services require CORS configuration */}
 
       {aspectRatioDialogData && (
         <AspectRatioMatchDialog

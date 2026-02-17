@@ -392,6 +392,7 @@ export interface ProjectState {
 
   // Computed values
   getTimelineDuration: () => number;
+  setTimelineDuration: (duration: number) => void;
 
   // Auto-save
   initializeAutoSave: () => Promise<void>;
@@ -495,7 +496,7 @@ export const useProjectStore = create<ProjectState>()(
         };
         const result = await actionExecutor.execute(action, project);
         if (result.success) {
-          set({ project: { ...project } });
+          set({ project: { ...project, settings: { ...project.settings } } });
         }
         return result;
       },
@@ -2312,7 +2313,30 @@ export const useProjectStore = create<ProjectState>()(
       // Computed values
       getTimelineDuration: () => {
         const { project } = get();
+        // Use manual duration if set (> 0), otherwise calculate from clips
+        const manualDuration = project.timeline?.duration || 0;
+        if (manualDuration > 0) {
+          return manualDuration;
+        }
         return calculateTimelineDuration(project);
+      },
+
+      setTimelineDuration: (duration: number) => {
+        const { project } = get();
+        const newDuration = Math.max(0, duration);
+        // console.log(`[ProjectStore] setTimelineDuration called - setting duration to ${newDuration}s (was ${project.timeline.duration}s)`);
+        // console.trace('[ProjectStore] setTimelineDuration call stack');
+        set({
+          project: {
+            ...project,
+            timeline: {
+              ...project.timeline,
+              duration: newDuration,
+            },
+            modifiedAt: Date.now(),
+          },
+        });
+        // console.log(`[ProjectStore] Duration set complete - project.timeline.duration is now ${get().project.timeline.duration}s`);
       },
 
       // Auto-save methods
@@ -3512,8 +3536,23 @@ export const useProjectStore = create<ProjectState>()(
 
         const effect = effectsBridge.getEffect(clipId, result.effectId);
         if (effect) {
-          // Trigger re-render by updating project state
-          set({ project: { ...get().project, modifiedAt: Date.now() } });
+          const { project } = get();
+          const bridgeEffects = effectsBridge.getEffects(clipId);
+          const updatedTracks = project.timeline.tracks.map((track) => ({
+            ...track,
+            clips: track.clips.map((clip) =>
+              clip.id === clipId
+                ? { ...clip, effects: bridgeEffects.length > 0 ? [...bridgeEffects] : [...clip.effects, effect] }
+                : clip,
+            ),
+          }));
+          set({
+            project: {
+              ...project,
+              timeline: { ...project.timeline, tracks: updatedTracks },
+              modifiedAt: Date.now(),
+            },
+          });
         }
         return effect || null;
       },
@@ -3589,8 +3628,23 @@ export const useProjectStore = create<ProjectState>()(
           return false;
         }
 
-        // Trigger re-render by updating project state
-        set({ project: { ...get().project, modifiedAt: Date.now() } });
+        const { project } = get();
+        const bridgeEffects = effectsBridge.getEffects(clipId);
+        const updatedTracks = project.timeline.tracks.map((track) => ({
+          ...track,
+          clips: track.clips.map((clip) =>
+            clip.id === clipId
+              ? { ...clip, effects: [...bridgeEffects] }
+              : clip,
+          ),
+        }));
+        set({
+          project: {
+            ...project,
+            timeline: { ...project.timeline, tracks: updatedTracks },
+            modifiedAt: Date.now(),
+          },
+        });
         return true;
       },
 
@@ -3611,8 +3665,23 @@ export const useProjectStore = create<ProjectState>()(
           return false;
         }
 
-        // Trigger re-render by updating project state
-        set({ project: { ...get().project, modifiedAt: Date.now() } });
+        const { project } = get();
+        const bridgeEffects = effectsBridge.getEffects(clipId);
+        const updatedTracks = project.timeline.tracks.map((track) => ({
+          ...track,
+          clips: track.clips.map((clip) =>
+            clip.id === clipId
+              ? { ...clip, effects: [...bridgeEffects] }
+              : clip,
+          ),
+        }));
+        set({
+          project: {
+            ...project,
+            timeline: { ...project.timeline, tracks: updatedTracks },
+            modifiedAt: Date.now(),
+          },
+        });
         return true;
       },
 
@@ -3639,8 +3708,22 @@ export const useProjectStore = create<ProjectState>()(
 
         const effect = effectsBridge.getEffect(clipId, effectId);
         if (effect) {
-          // Trigger re-render by updating project state
-          set({ project: { ...get().project, modifiedAt: Date.now() } });
+          const { project } = get();
+          const updatedTracks = project.timeline.tracks.map((track) => ({
+            ...track,
+            clips: track.clips.map((clip) =>
+              clip.id === clipId
+                ? { ...clip, effects: clip.effects.map((e) => e.id === effectId ? { ...e, enabled } : e) }
+                : clip,
+            ),
+          }));
+          set({
+            project: {
+              ...project,
+              timeline: { ...project.timeline, tracks: updatedTracks },
+              modifiedAt: Date.now(),
+            },
+          });
         }
         return effect || null;
       },
@@ -3941,6 +4024,25 @@ export const useProjectStore = create<ProjectState>()(
       updateClipKeyframes: (clipId: string, keyframes: Keyframe[]) => {
         const { project } = get();
 
+        // Check if it's a shape or SVG clip in the graphics engine
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (graphicsEngine) {
+          const shapeClip = graphicsEngine.getShapeClip(clipId);
+          if (shapeClip) {
+            graphicsEngine.updateShapeClip(clipId, { keyframes });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+
+          const svgClip = graphicsEngine.getSVGClip(clipId);
+          if (svgClip) {
+            graphicsEngine.updateSVGClip(clipId, { keyframes });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        // Check regular clips in timeline tracks
         for (const track of project.timeline.tracks) {
           const clipIndex = track.clips.findIndex((c) => c.id === clipId);
           if (clipIndex !== -1) {

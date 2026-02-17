@@ -171,12 +171,28 @@ export class ChromaKeyEngine {
     const data = imageData.data;
 
     const { keyColor, tolerance, edgeSoftness, spillSuppression } = settings;
+    
+    // Debug: Sample a few pixels to see what's happening
+    let sampleCount = 0;
+    let transparentCount = 0;
+    let opaqueCount = 0;
+    
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i] / 255;
       const g = data[i + 1] / 255;
       const b = data[i + 2] / 255;
       const distance = this.colorDistance(r, g, b, keyColor);
       let alpha = this.calculateAlpha(distance, tolerance, edgeSoftness);
+      
+      // Count pixels for debugging
+      if (sampleCount < 10 && i % 10000 === 0) {
+        console.log(`[ChromaKey Sample] RGB(${r.toFixed(2)}, ${g.toFixed(2)}, ${b.toFixed(2)}) vs Key(${keyColor.r}, ${keyColor.g}, ${keyColor.b}) => distance=${distance.toFixed(3)}, alpha=${alpha.toFixed(3)}`);
+        sampleCount++;
+      }
+      
+      if (alpha < 0.1) transparentCount++;
+      else if (alpha > 0.9) opaqueCount++;
+      
       if (spillSuppression > 0 && alpha > 0) {
         const spillResult = this.suppressSpill(
           r,
@@ -195,6 +211,9 @@ export class ChromaKeyEngine {
 
     // Put processed data back
     this.ctx.putImageData(imageData, 0, 0);
+
+    const totalPixels = data.length / 4;
+    console.log(`[ChromaKey] Processed ${totalPixels} pixels: ${transparentCount} transparent (${(transparentCount/totalPixels*100).toFixed(1)}%), ${opaqueCount} opaque (${(opaqueCount/totalPixels*100).toFixed(1)}%)`);
 
     const result = await createImageBitmap(this.canvas);
 

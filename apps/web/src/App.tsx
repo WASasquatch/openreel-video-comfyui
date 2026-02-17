@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, lazy, Suspense } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { ToastContainer } from "./components/Toast";
 import { ScriptViewDialog } from "./components/editor/ScriptViewDialog";
 import { SearchModal } from "./components/editor/SearchModal";
@@ -12,19 +12,8 @@ import { useRouter } from "./hooks/use-router";
 import { useProjectRecovery } from "./hooks/useProjectRecovery";
 import { SOCIAL_MEDIA_PRESETS, type SocialMediaCategory } from "@openreel/core";
 import { TooltipProvider } from "@openreel/ui";
-
-const EditorInterface = lazy(() =>
-  import("./components/editor/EditorInterface").then((m) => ({
-    default: m.EditorInterface,
-  }))
-);
-
-const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
-  <div className="h-screen w-screen bg-background flex flex-col items-center justify-center">
-    <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mb-3" />
-    <p className="text-sm text-text-secondary">{message}</p>
-  </div>
-);
+import { useComfyUIEmbedding } from "./hooks/useComfyUIEmbedding";
+import { EditorInterface } from "./components/editor/EditorInterface";
 
 const PRESET_DIMENSIONS: Record<string, SocialMediaCategory> = {
   "1080x1920": "tiktok",
@@ -42,6 +31,10 @@ function App() {
 
   const { route, params, navigate, parsedDimensions, fps } = useRouter();
   const hasHandledInitialRoute = useRef(false);
+
+  // ComfyUI embedding: detect ?embedded=true and auto-import video
+  const isEmbedded = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embedded') === 'true';
+  useComfyUIEmbedding({ enabled: isEmbedded });
 
   useEffect(() => {
     if (hasHandledInitialRoute.current) return;
@@ -120,7 +113,7 @@ function App() {
   }, [handleKeyDown]);
 
   const showWelcome =
-    ["welcome", "templates", "recent"].includes(route) && !skipWelcomeScreen;
+    ["welcome", "templates", "recent"].includes(route) && !skipWelcomeScreen && !isEmbedded;
   const initialTab =
     route === "templates"
       ? "templates"
@@ -132,15 +125,13 @@ function App() {
   return (
     <TooltipProvider>
       <div className="h-screen w-screen bg-background text-text-primary overflow-hidden">
-        <MobileBlocker />
+        {!isEmbedded && <MobileBlocker />}
         {isSharePage ? (
           <SharePage shareId={params.shareId!} />
         ) : showWelcome ? (
           <WelcomeScreen initialTab={initialTab} />
         ) : (
-          <Suspense fallback={<LoadingSpinner message="Loading editor..." />}>
-            <EditorInterface />
-          </Suspense>
+          <EditorInterface />
         )}
         <ToastContainer />
         <ScriptViewDialog

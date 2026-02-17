@@ -69,6 +69,7 @@ export const Timeline: React.FC = () => {
     removeMarker,
     updateMarker,
     updateClipKeyframes,
+    setTimelineDuration,
   } = useProjectStore();
   const tracks = project.timeline.tracks;
 
@@ -134,6 +135,12 @@ export const Timeline: React.FC = () => {
   } | null>(null);
 
   const timelineDuration = useMemo(() => {
+    // Use manual duration if set, otherwise calculate from clips
+    const manualDuration = project.timeline?.duration || 0;
+    if (manualDuration > 0) {
+      return manualDuration;
+    }
+    
     let maxEnd = 0;
     for (const track of tracks) {
       for (const clip of track.clips) {
@@ -142,7 +149,7 @@ export const Timeline: React.FC = () => {
       }
     }
     return Math.max(maxEnd, 60); // Minimum 60 seconds
-  }, [tracks]);
+  }, [tracks, project.timeline?.duration]);
 
   const totalTracksHeight = useMemo(() => {
     let height = 0;
@@ -843,6 +850,34 @@ export const Timeline: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="flex items-center bg-background-tertiary rounded-lg border border-border px-3 py-1.5 gap-2">
+            <label className="text-[11px] text-text-secondary whitespace-nowrap">
+              Project Length
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              value={project.timeline?.duration || 0}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value);
+                // console.log(`[Timeline] Input changed to: ${value}, current project.timeline.duration: ${project.timeline?.duration}`);
+                if (!isNaN(value) && value >= 0) {
+                  // console.log(`[Timeline] Calling setTimelineDuration(${value})`);
+                  setTimelineDuration(value);
+                  // console.log(`[Timeline] After setTimelineDuration, project.timeline.duration should be: ${value}`);
+                }
+              }}
+              onFocus={() => {
+                // console.log(`[Timeline] Input focused - current value: ${project.timeline?.duration}`);
+              }}
+              className="w-20 bg-background text-text-primary text-[11px] font-mono px-2 py-1 rounded border border-border focus:border-primary focus:outline-none"
+              placeholder="Auto"
+              title="Project duration in seconds (0 = auto-calculate from clips)"
+            />
+            <span className="text-[11px] text-text-secondary">s</span>
+          </div>
+          
           <div className="flex items-center bg-background-tertiary rounded-lg border border-border overflow-hidden">
             <button
               onClick={zoomOut}

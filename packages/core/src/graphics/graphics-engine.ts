@@ -268,6 +268,7 @@ export class GraphicsEngine {
       blendMode?: import("../video/types").BlendMode;
       blendOpacity?: number;
       emphasisAnimation?: EmphasisAnimation;
+      keyframes?: import("../types/timeline").Keyframe[];
     },
   ): ShapeClip | undefined {
     const existing = this.shapeClips.get(id);
@@ -284,6 +285,7 @@ export class GraphicsEngine {
       blendOpacity: updates.blendOpacity ?? existing.blendOpacity,
       emphasisAnimation:
         updates.emphasisAnimation ?? existing.emphasisAnimation,
+      keyframes: updates.keyframes ?? existing.keyframes,
     };
 
     this.shapeClips.set(id, updatedClip);
@@ -1707,6 +1709,7 @@ export class GraphicsEngine {
       blendMode?: import("../video/types").BlendMode;
       blendOpacity?: number;
       emphasisAnimation?: EmphasisAnimation;
+      keyframes?: import("../types/timeline").Keyframe[];
     },
   ): SVGClip | undefined {
     const existing = this.svgClips.get(id);
@@ -1729,6 +1732,7 @@ export class GraphicsEngine {
       blendOpacity: updates.blendOpacity ?? existing.blendOpacity,
       emphasisAnimation:
         updates.emphasisAnimation ?? existing.emphasisAnimation,
+      keyframes: updates.keyframes ?? existing.keyframes,
     };
 
     this.svgClips.set(id, updatedClip);

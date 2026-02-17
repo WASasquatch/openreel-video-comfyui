@@ -476,6 +476,56 @@ export class ThreeJSLayerRenderer {
     return mesh;
   }
 
+  renderImageFrame(
+    frame: ImageBitmap | HTMLVideoElement | HTMLCanvasElement | OffscreenCanvas,
+    transform: Transform,
+    canvasWidth: number,
+    canvasHeight: number,
+    blendMode?: string,
+    blendOpacity?: number,
+  ): THREE.Mesh | null {
+    // Create texture from the frame
+    let texture: THREE.Texture;
+    
+    if (frame instanceof HTMLVideoElement) {
+      texture = new THREE.VideoTexture(frame);
+    } else if (frame instanceof ImageBitmap) {
+      // Create canvas from ImageBitmap
+      const canvas = document.createElement('canvas');
+      canvas.width = frame.width;
+      canvas.height = frame.height;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(frame, 0, 0);
+      texture = new THREE.CanvasTexture(canvas);
+    } else {
+      texture = new THREE.CanvasTexture(frame as HTMLCanvasElement);
+    }
+
+    texture.needsUpdate = true;
+
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      opacity: transform.opacity ?? 1,
+      side: THREE.DoubleSide,
+    });
+
+    if (blendMode) {
+      this.applyBlendMode(
+        material,
+        blendMode as any,
+        blendOpacity ?? 100,
+      );
+    }
+
+    const geometry = new THREE.PlaneGeometry(canvasWidth, canvasHeight);
+    const mesh = new THREE.Mesh(geometry, material);
+
+    this.applyTransform(mesh, transform, canvasWidth, canvasHeight);
+
+    return mesh;
+  }
+
   render(): HTMLCanvasElement {
     this.renderer.render(this.scene, this.camera);
     return this._canvas;

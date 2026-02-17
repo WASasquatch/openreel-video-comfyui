@@ -97,6 +97,18 @@ export class PlaybackController {
       return;
     }
 
+    // Check if we've reached the project duration and stop playback
+    if (this.project && this.project.timeline.duration > 0 && time >= this.project.timeline.duration) {
+      // console.log(`[PlaybackController] Stopping playback: time=${time.toFixed(2)}s, duration=${this.project.timeline.duration}s`);
+      this.pause();
+      return;
+    }
+    
+    // Debug log every second
+    // if (this.project && Math.floor(time) !== Math.floor(time - 0.033)) {
+    //   console.log(`[PlaybackController] Playing: time=${time.toFixed(2)}s, duration=${this.project?.timeline?.duration || 'auto'}s`);
+    // }
+
     if (this.masterClock.shouldSkipFrame()) {
       this.droppedFrames++;
       return;
@@ -147,9 +159,13 @@ export class PlaybackController {
   }
 
   setProject(project: Project): void {
+    // console.log(`[PlaybackController] setProject called - duration: ${project.timeline.duration}s`);
     this.project = project;
     this.state = "stopped";
-    this.masterClock.setDuration(project.timeline.duration);
+    const durationToSet = project.timeline.duration;
+    // console.log(`[PlaybackController] About to call setDuration with: ${durationToSet}s`);
+    this.masterClock.setDuration(durationToSet);
+    // console.log(`[PlaybackController] setDuration called, master clock should now have: ${durationToSet}s`);
     this.clearAudioBuffer();
   }
 
@@ -185,10 +201,16 @@ export class PlaybackController {
       throw new Error("PlaybackController not properly initialized");
     }
 
-    if (this.state === "playing") return;
+    if (this.state === "playing") {
+      // console.log(`[PlaybackController] play() called but already playing - ignoring`);
+      return;
+    }
 
     const duration = this.project.timeline.duration;
+    // console.log(`[PlaybackController] play() called - project.timeline.duration: ${duration}s, currentTime: ${this.masterClock.currentTime}s`);
+    
     if (this.masterClock.currentTime >= duration) {
+      // console.log(`[PlaybackController] Current time >= duration, seeking to 0`);
       this.masterClock.seek(0);
     }
 

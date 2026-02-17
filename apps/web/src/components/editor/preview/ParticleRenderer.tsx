@@ -26,6 +26,8 @@ export const ParticleRenderer: React.FC<ParticleRendererProps> = ({
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.OrthographicCamera | null>(null);
   const geometryRef = useRef<THREE.BufferGeometry | null>(null);
+  const materialRef = useRef<THREE.PointsMaterial | null>(null);
+  const pointsRef = useRef<THREE.Points | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const currentTimeRef = useRef<number>(currentTime);
   const lastFrameTimeRef = useRef<number>(performance.now());
@@ -35,6 +37,21 @@ export const ParticleRenderer: React.FC<ParticleRendererProps> = ({
   const [isReady, setIsReady] = React.useState(false);
 
   const engine = useMemo(() => getParticleEngine(), []);
+
+  // Map particle blend modes to THREE.js blending modes
+  const getThreeBlendMode = useCallback((blendMode: string): THREE.Blending => {
+    switch (blendMode) {
+      case "add":
+        return THREE.AdditiveBlending;
+      case "multiply":
+        return THREE.MultiplyBlending;
+      case "screen":
+        return THREE.AdditiveBlending; // THREE.js doesn't have screen, use additive as closest
+      case "normal":
+      default:
+        return THREE.NormalBlending;
+    }
+  }, []);
 
   useEffect(() => {
     currentTimeRef.current = currentTime;
@@ -121,12 +138,14 @@ export const ParticleRenderer: React.FC<ParticleRendererProps> = ({
       vertexColors: true,
       transparent: true,
       opacity: 1,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.AdditiveBlending, // Default, will be updated based on effects
       depthWrite: false,
       sizeAttenuation: false,
     });
+    materialRef.current = material;
 
     const points = new THREE.Points(geometry, material);
+    pointsRef.current = points;
     scene.add(points);
 
     setIsReady(true);
@@ -141,6 +160,22 @@ export const ParticleRenderer: React.FC<ParticleRendererProps> = ({
       }
     };
   }, [width, height]);
+
+  // Update material blend mode when effects change
+  useEffect(() => {
+    if (!materialRef.current || effects.length === 0) return;
+
+    // Use the blend mode from the first active effect
+    // If multiple effects have different blend modes, the first one takes precedence
+    const activeEffect = effects.find(e => e.enabled);
+    if (activeEffect) {
+      const blendMode = getThreeBlendMode(activeEffect.config.blendMode);
+      if (materialRef.current.blending !== blendMode) {
+        materialRef.current.blending = blendMode;
+        materialRef.current.needsUpdate = true;
+      }
+    }
+  }, [effects, getThreeBlendMode]);
 
   const hexToRgbNormalized = useCallback(
     (hex: string): { r: number; g: number; b: number } => {

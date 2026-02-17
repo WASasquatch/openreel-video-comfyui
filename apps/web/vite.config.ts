@@ -4,6 +4,9 @@ import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // When embedded in ComfyUI, the app is served under this route prefix.
+  // All asset imports (code-split chunks, CSS, workers) will use this base.
+  base: "/was/openreel_video/app/",
   plugins: [react()],
   assetsInclude: ["**/*.wasm"],
   resolve: {
@@ -22,6 +25,9 @@ export default defineConfig({
     target: "esnext",
     rollupOptions: {
       output: {
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'assets/[name].[ext]',
         manualChunks: (id) => {
           if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) {
             return "react";

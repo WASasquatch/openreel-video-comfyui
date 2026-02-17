@@ -134,7 +134,10 @@ class ErrorHandler {
       context,
       recoverable: true,
       recoveryAction: async () => {
-        window.location.reload();
+        const isEmbedded = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('embedded') === 'true';
+        if (!isEmbedded) {
+          window.location.reload();
+        }
       },
     });
   }

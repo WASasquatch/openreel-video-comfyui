@@ -420,6 +420,12 @@ export class VideoEngine {
       )
       .sort((a, b) => b.originalIndex - a.originalIndex);
 
+    // console.log(`[VideoEngine] Rendering ${allRenderableTracks.length} tracks in order:`, 
+    //   allRenderableTracks.map(({ track, originalIndex }) => 
+    //     `${track.type} (index ${originalIndex})`
+    //   ).join(', ')
+    // );
+
     const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext("2d") as OffscreenCanvasRenderingContext2D;
     ctx.imageSmoothingEnabled = true;
@@ -427,7 +433,8 @@ export class VideoEngine {
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, width, height);
 
-    for (const { track } of allRenderableTracks) {
+    for (const { track, originalIndex: _originalIndex } of allRenderableTracks) {
+      // console.log(`[VideoEngine] Rendering track ${track.type} at index ${_originalIndex}`);
       if (track.type === "video" || track.type === "image") {
         const clips = this.getClipsAtTime(track, time);
         for (const clip of clips) {
@@ -574,6 +581,7 @@ export class VideoEngine {
               finalTransform.opacity,
               width,
               height,
+              clip.blendMode,
             );
 
             if (processedBitmap !== bitmap) {
@@ -663,9 +671,19 @@ export class VideoEngine {
     opacity: number,
     canvasWidth: number,
     canvasHeight: number,
+    blendMode?: BlendMode,
   ): void {
     ctx.save();
     ctx.globalAlpha = opacity;
+    
+    // Apply blend mode if specified
+    if (blendMode && blendMode !== "normal") {
+      const compositeOp = this.getCanvasBlendMode(blendMode);
+      console.log(`[VideoEngine] Applying blend mode: ${blendMode} -> ${compositeOp}`);
+      ctx.globalCompositeOperation = compositeOp;
+    } else {
+      console.log(`[VideoEngine] Using default blend mode (source-over)`);
+    }
     const centerX = canvasWidth / 2;
     const centerY = canvasHeight / 2;
 

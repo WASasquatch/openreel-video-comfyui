@@ -1700,6 +1700,7 @@ export const drawFrameWithTransform = (
   transform: ClipTransform | undefined,
   canvasWidth: number,
   canvasHeight: number,
+  blendMode?: string,
 ): void => {
   const t: ClipTransform = {
     ...DEFAULT_TRANSFORM,
@@ -1718,15 +1719,89 @@ export const drawFrameWithTransform = (
     },
   };
 
-  ctx.save();
-  ctx.globalAlpha = t.opacity ?? 1;
+  // Check if 3D transforms are present - Canvas 2D can't handle these
+  const rotate3d = (t as any).rotate3d;
+  const has3DTransforms =
+    rotate3d &&
+    (rotate3d.x !== 0 || rotate3d.y !== 0 || rotate3d.z !== 0);
+  const perspective = (t as any).perspective;
+  const hasPerspective = perspective && perspective !== 1000;
+
+  // Use Three.js renderer for 3D transforms
+  if (has3DTransforms || hasPerspective) {
+    if (!threeJSRenderer) {
+      threeJSRenderer = new ThreeJSLayerRenderer(canvasWidth, canvasHeight);
+    }
+
+    if (
+      threeJSRenderer.canvas.width !== canvasWidth ||
+      threeJSRenderer.canvas.height !== canvasHeight
+    ) {
+      threeJSRenderer.resize(canvasWidth, canvasHeight);
+    }
+
+    threeJSRenderer.clear();
+
+    const mesh = threeJSRenderer.renderImageFrame(
+      frame,
+      t,
+      canvasWidth,
+      canvasHeight,
+      blendMode,
+      100,
+    );
+
+    if (mesh) {
+      threeJSRenderer.getScene().add(mesh);
+      const threeCanvas = threeJSRenderer.render();
+      ctx.drawImage(threeCanvas, 0, 0);
+    }
+    return;
+  }
+
+  // When using blend modes with opacity transitions, we need to:
+  // 1. Render the frame with blend mode at full opacity to a temp canvas
+  // 2. Then composite that blended result with the transition opacity
+  // This ensures transitions fade the BLENDED result, not the source
+  const hasBlendMode = blendMode && blendMode !== 'normal';
+  const hasOpacityTransition = (t.opacity ?? 1) < 1;
+  const needsTempCanvas = hasBlendMode && hasOpacityTransition;
+
+  let renderCtx = ctx;
+  let tempCanvas: HTMLCanvasElement | OffscreenCanvas | null = null;
+  
+  if (needsTempCanvas) {
+    // Create temp canvas for blend mode rendering at full opacity
+    if (typeof OffscreenCanvas !== 'undefined') {
+      tempCanvas = new OffscreenCanvas(canvasWidth, canvasHeight);
+    } else {
+      tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvasWidth;
+      tempCanvas.height = canvasHeight;
+    }
+    renderCtx = tempCanvas.getContext('2d') as CanvasRenderingContext2D;
+    if (!renderCtx) {
+      renderCtx = ctx;
+      tempCanvas = null;
+    }
+  }
+
+  renderCtx.save();
+  
+  // Apply full opacity when rendering to temp canvas, or actual opacity when rendering directly
+  renderCtx.globalAlpha = needsTempCanvas ? 1 : (t.opacity ?? 1);
+  
+  // Apply blend mode if specified (only when rendering directly, not to temp canvas)
+  if (hasBlendMode && !needsTempCanvas) {
+    renderCtx.globalCompositeOperation = blendMode as GlobalCompositeOperation;
+  }
 
   const centerX = canvasWidth / 2;
   const centerY = canvasHeight / 2;
 
-  ctx.translate(centerX + t.position.x, centerY + t.position.y);
-  ctx.rotate((t.rotation * Math.PI) / 180);
-  ctx.scale(t.scale.x, t.scale.y);
+  renderCtx.translate(centerX + t.position.x, centerY + t.position.y);
+  renderCtx.rotate((t.rotation * Math.PI) / 180);
+  renderCtx.scale(t.scale.x, t.scale.y);
 
   let sourceWidth: number;
   let sourceHeight: number;
@@ -1759,10 +1834,10 @@ export const drawFrameWithTransform = (
 
   const borderRadius = t.borderRadius || 0;
   if (borderRadius > 0) {
-    ctx.beginPath();
+    renderCtx.beginPath();
     const radius = Math.min(borderRadius, drawWidth / 2, drawHeight / 2);
-    ctx.roundRect(drawX, drawY, drawWidth, drawHeight, radius);
-    ctx.clip();
+    renderCtx.roundRect(drawX, drawY, drawWidth, drawHeight, radius);
+    renderCtx.clip();
   }
 
   if (t.crop) {
@@ -1786,7 +1861,7 @@ export const drawFrameWithTransform = (
     const cropDrawX = -cropDrawWidth * t.anchor.x;
     const cropDrawY = -cropDrawHeight * t.anchor.y;
 
-    ctx.drawImage(
+    renderCtx.drawImage(
       frame,
       sx,
       sy,
@@ -1798,10 +1873,19 @@ export const drawFrameWithTransform = (
       cropDrawHeight,
     );
   } else {
-    ctx.drawImage(frame, drawX, drawY, drawWidth, drawHeight);
+    renderCtx.drawImage(frame, drawX, drawY, drawWidth, drawHeight);
   }
 
-  ctx.restore();
+  renderCtx.restore();
+
+  // If we used a temp canvas, now composite it with blend mode and transition opacity
+  if (tempCanvas && hasBlendMode) {
+    ctx.save();
+    ctx.globalAlpha = t.opacity ?? 1;
+    ctx.globalCompositeOperation = blendMode as GlobalCompositeOperation;
+    ctx.drawImage(tempCanvas, 0, 0);
+    ctx.restore();
+  }
 };
 
 export const applyEffectsToFrame = async (
@@ -1810,6 +1894,28 @@ export const applyEffectsToFrame = async (
 ): Promise<ImageBitmap> => {
   try {
     let processedFrame = frame;
+
+    // Apply chroma key (green screen) if enabled
+    try {
+      const { useEngineStore } = await import("../../../stores/engine-store");
+      const chromaKeyEngine = await useEngineStore.getState().getChromaKeyEngine();
+      const isEnabled = chromaKeyEngine ? chromaKeyEngine.isEnabled(clipId) : false;
+      
+      // console.log(`[ChromaKey] Clip ${clipId}: enabled=${isEnabled}, settings=`, chromaKeyEngine?.getSettings(clipId));
+      
+      if (chromaKeyEngine && isEnabled) {
+        // console.log(`[ChromaKey] Applying chroma key to clip ${clipId} with color`, chromaKeyEngine.getSettings(clipId)?.keyColor);
+        const chromaResult = await chromaKeyEngine.applyChromaKey(processedFrame, clipId);
+        if (chromaResult && chromaResult.image && chromaResult.image.width > 0 && chromaResult.image.height > 0) {
+          // console.log(`[ChromaKey] Successfully applied chroma key, processing time: ${chromaResult.processingTime}ms`);
+          processedFrame = chromaResult.image;
+        } else {
+          console.warn('[ChromaKey] Chroma key returned invalid result');
+        }
+      }
+    } catch (error) {
+      console.error('[ChromaKey] Chroma key processing failed:', error);
+    }
 
     const bgEngine = getBackgroundRemovalEngine();
     if (bgEngine && bgEngine.isInitialized()) {
