@@ -2,9 +2,9 @@
 
 > **OpenReel Video editor fork with ComfyUI integration. Professional video editing embedded in ComfyUI workflows.**
 
-This is a modified fork of [OpenReel Video](https://github.com/augani/openreel) optimized for seamless integration with **[ComfyUI_Viewer_OpenReel_Extension](https://github.com/YOUR_USERNAME/ComfyUI_Viewer_OpenReel_Extension)**. It enables professional video editing directly within ComfyUI workflows, allowing you to edit AI-generated videos or external media files without leaving your ComfyUI environment.
+This is a modified fork of [OpenReel Video](https://github.com/augani/openreel) optimized for seamless integration with **[ComfyUI_Viewer_OpenReel_Extension](https://github.com/WASasquatch/ComfyUI_Viewer_OpenReel_Extension)**. It enables professional video editing directly within ComfyUI workflows, allowing you to edit AI-generated videos or external media files without leaving your ComfyUI environment.
 
-**[Upstream OpenReel](https://github.com/augani/openreel)** | **[ComfyUI Extension](https://github.com/YOUR_USERNAME/ComfyUI_Viewer_OpenReel_Extension)** | **[Modifications](COMFYUI_CHANGES.md)**
+**[Upstream OpenReel](https://github.com/augani/openreel)** | **[ComfyUI Extension](https://github.com/WASasquatch/ComfyUI_Viewer_OpenReel_Extension)** | **[Modifications](COMFYUI_CHANGES.md)**
 
 ![License](https://img.shields.io/badge/License-MIT-green) ![ComfyUI](https://img.shields.io/badge/ComfyUI-Integration-blue) ![Status](https://img.shields.io/badge/Status-Active-brightgreen)
 
@@ -119,7 +119,7 @@ This repository contains **source code only** (no built artifacts). Build it to 
 
 ```bash
 # Clone this repository
-git clone https://github.com/YOUR_USERNAME/openreel-video-comfyui.git
+git clone https://github.com/WASasquatch/openreel-video-comfyui.git
 cd openreel-video-comfyui
 
 # Install dependencies
@@ -256,7 +256,7 @@ Contributions are welcome! This fork focuses on **ComfyUI integration improvemen
 **Development workflow:**
 ```bash
 # Fork and clone
-git clone https://github.com/YOUR_USERNAME/openreel-video-comfyui.git
+git clone https://github.com/WASasquatch/openreel-video-comfyui.git
 cd openreel-video-comfyui
 
 # Create feature branch
@@ -341,7 +341,7 @@ See [LICENSE](LICENSE) for details.
 
 **Built for:**
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - Powerful node-based UI for Stable Diffusion
-- [ComfyUI_Viewer](https://github.com/YOUR_USERNAME/ComfyUI_Viewer) - Content viewer framework for ComfyUI
+- [ComfyUI_Viewer](https://github.com/WASasquatch/ComfyUI_Viewer) - Content viewer framework for ComfyUI
 
 **Technologies:**
 - [MediaBunny](https://mediabunny.dev) - Media processing
@@ -367,7 +367,7 @@ See [LICENSE](LICENSE) for details.
 ## Related Projects
 
 - **[OpenReel Video](https://github.com/augani/openreel)** - Original browser-based video editor
-- **[ComfyUI_Viewer_OpenReel_Extension](https://github.com/YOUR_USERNAME/ComfyUI_Viewer_OpenReel_Extension)** - ComfyUI extension that uses this fork
+- **[ComfyUI_Viewer_OpenReel_Extension](https://github.com/WASasquatch/ComfyUI_Viewer_OpenReel_Extension)** - ComfyUI extension that uses this fork
 - **[ComfyUI](https://github.com/comfyanonymous/ComfyUI)** - Node-based UI for Stable Diffusion
 
 ---
