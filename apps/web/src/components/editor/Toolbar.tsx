@@ -700,7 +700,14 @@ export const Toolbar: React.FC = () => {
         quality: 85,
       };
 
+      const manualDuration = project.timeline?.duration;
+      const calculatedDuration = project.timeline?.tracks ? Math.max(...project.timeline.tracks.flatMap(t => t.clips.map(c => c.startTime + (c.outPoint - c.inPoint)))) : 0;
+      const usingDuration = manualDuration && manualDuration > 0 ? manualDuration : calculatedDuration;
+      
       console.log("[OpenReel] Starting FFmpeg export with settings:", videoSettings);
+      console.log("[OpenReel] Export duration - Manual:", manualDuration, "Calculated:", calculatedDuration, "Using:", usingDuration);
+      alert(`Export starting:\nManual duration: ${manualDuration}s\nCalculated duration: ${calculatedDuration.toFixed(2)}s\nWill export: ${usingDuration}s`);
+      
       const generator = engine.exportVideoWithFFmpeg(project, videoSettings);
       let finalResult: ExportResult | undefined;
 

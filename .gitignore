@@ -25,6 +25,10 @@ out/
 .DS_Store
 Thumbs.db
 
+# Windows WSL
+*:Zone.Identifier
+*.Zone.Identifier
+
 # Logs
 logs/
 *.log

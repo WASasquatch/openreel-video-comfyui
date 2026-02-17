@@ -279,7 +279,10 @@ export class ExportEngine {
     this.videoEngine?.resetExportState();
 
     const { timeline } = project;
-    const timelineDuration = this.calculateTimelineDuration(timeline);
+    const timelineDuration = timeline.duration && timeline.duration > 0 
+      ? timeline.duration 
+      : this.calculateTimelineDuration(timeline);
+    console.log('[Export Video] Timeline duration:', timelineDuration, 's (manual:', timeline.duration, 'calculated:', this.calculateTimelineDuration(timeline), ')');
 
     if (timelineDuration <= 0) {
       return {
@@ -293,6 +296,7 @@ export class ExportEngine {
     }
 
     const totalFrames = Math.ceil(timelineDuration * fullSettings.frameRate);
+    console.log('[Export Video] Total frames:', totalFrames);
     let bytesWritten = 0;
 
     try {
@@ -580,7 +584,10 @@ export class ExportEngine {
     this.videoEngine?.resetExportState();
 
     const { timeline } = project;
-    const timelineDuration = this.calculateTimelineDuration(timeline);
+    const timelineDuration = timeline.duration && timeline.duration > 0 
+      ? timeline.duration 
+      : this.calculateTimelineDuration(timeline);
+    console.log('[Export Worker] Timeline duration:', timelineDuration, 's (manual:', timeline.duration, 'calculated:', this.calculateTimelineDuration(timeline), ')');
 
     if (timelineDuration <= 0) {
       return {
@@ -594,6 +601,7 @@ export class ExportEngine {
     }
 
     const totalFrames = Math.ceil(timelineDuration * fullSettings.frameRate);
+    console.log('[Export Worker] Total frames:', totalFrames);
 
     try {
       yield this.createProgress("preparing", 0, totalFrames, 0, 0);
@@ -962,7 +970,10 @@ export class ExportEngine {
     this.currentExport = { startTime: Date.now(), framesRendered: 0 };
 
     const { timeline } = project;
-    const timelineDuration = this.calculateTimelineDuration(timeline);
+    const timelineDuration = timeline.duration && timeline.duration > 0 
+      ? timeline.duration 
+      : this.calculateTimelineDuration(timeline);
+    console.log('[Export FFmpeg] Timeline duration:', timelineDuration, 's (manual:', timeline.duration, 'calculated:', this.calculateTimelineDuration(timeline), ')');
 
     if (timelineDuration <= 0) {
       return {
@@ -976,6 +987,7 @@ export class ExportEngine {
     }
 
     const totalFrames = Math.ceil(timelineDuration * fullSettings.frameRate);
+    console.log('[Export FFmpeg] Total frames:', totalFrames, '= ceil(', timelineDuration, '*', fullSettings.frameRate, ')');
     const simpleCheck = this.isSimpleProject(project);
 
     this.videoEngine?.resetExportState();
@@ -1110,9 +1122,13 @@ export class ExportEngine {
       }
 
       const self = this;
+      console.log('[Export FFmpeg] Using frame-by-frame rendering. Total frames:', totalFrames);
 
       async function* generateFrames(): AsyncIterable<{ image: ImageBitmap; frameIndex: number }> {
         for (let frame = 0; frame < totalFrames; frame++) {
+          if (frame % 24 === 0) {
+            console.log('[Export FFmpeg] Rendering frame', frame, 'of', totalFrames);
+          }
           if (self.abortController?.signal.aborted) {
             return;
           }
@@ -1753,7 +1769,10 @@ export class ExportEngine {
       return null;
     }
 
-    const timelineDuration = this.calculateTimelineDuration(timeline);
+    const timelineDuration = timeline.duration && timeline.duration > 0 
+      ? timeline.duration 
+      : this.calculateTimelineDuration(timeline);
+    console.log('[Export Audio] Timeline duration:', timelineDuration, 's (manual:', timeline.duration, 'calculated:', this.calculateTimelineDuration(timeline), ')');
     if (timelineDuration <= 0) {
       return null;
     }
@@ -1997,7 +2016,11 @@ export class ExportEngine {
     let maxEndTime = 0;
     for (const track of timeline.tracks) {
       for (const clip of track.clips) {
-        const endTime = clip.startTime + clip.duration;
+        // Use the actual trimmed duration (outPoint - inPoint) instead of clip.duration
+        // This ensures clips with long media (e.g., 3min audio) but short usage (e.g., 10s)
+        // don't extend the timeline beyond what's actually visible
+        const trimmedDuration = clip.outPoint - clip.inPoint;
+        const endTime = clip.startTime + trimmedDuration;
         if (endTime > maxEndTime) {
           maxEndTime = endTime;
         }
