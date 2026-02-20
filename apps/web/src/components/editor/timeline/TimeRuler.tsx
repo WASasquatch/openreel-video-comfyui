@@ -147,10 +147,12 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
   return (
     <div
       ref={rulerRef}
+      data-time-ruler
       className={`h-8 border-b border-border flex items-end relative bg-background-secondary select-none ${
         isDragging ? "cursor-grabbing" : "cursor-pointer"
       }`}
       onMouseDown={handleMouseDown}
+      onClick={(e) => e.stopPropagation()}
       style={{ cursor: isDragging ? "grabbing" : "pointer" }}
     >
       {ticks.map((tick) => (

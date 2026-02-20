@@ -5,9 +5,10 @@ interface KeyframeMarkerProps {
   keyframe: Keyframe;
   xPosition: number;
   color: string;
+  label?: string;
   isSelected: boolean;
   onSelect: (addToSelection: boolean) => void;
-  onMove: (deltaPixels: number) => void;
+  onMove: (absoluteX: number) => void;
   onDelete: () => void;
 }
 
@@ -15,13 +16,16 @@ export const KeyframeMarker: React.FC<KeyframeMarkerProps> = ({
   keyframe,
   xPosition,
   color,
+  label,
   isSelected,
   onSelect,
   onMove,
   onDelete,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStartX, setDragStartX] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const dragStartXRef = useRef(0);
+  const originalXRef = useRef(0);
   const markerRef = useRef<HTMLDivElement>(null);
 
   const handleMouseDown = useCallback(
@@ -33,22 +37,23 @@ export const KeyframeMarker: React.FC<KeyframeMarkerProps> = ({
       onSelect(addToSelection);
 
       setIsDragging(true);
-      setDragStartX(e.clientX);
+      dragStartXRef.current = e.clientX;
+      originalXRef.current = xPosition;
     },
-    [onSelect]
+    [onSelect, xPosition]
   );
 
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
       if (!isDragging) return;
 
-      const deltaX = e.clientX - dragStartX;
-      if (Math.abs(deltaX) > 2) {
-        onMove(deltaX);
-        setDragStartX(e.clientX);
+      const totalDeltaX = e.clientX - dragStartXRef.current;
+      if (Math.abs(totalDeltaX) > 2) {
+        const targetX = Math.max(0, originalXRef.current + totalDeltaX);
+        onMove(targetX);
       }
     },
-    [isDragging, dragStartX, onMove]
+    [isDragging, onMove]
   );
 
   const handleMouseUp = useCallback(() => {
@@ -85,31 +90,36 @@ export const KeyframeMarker: React.FC<KeyframeMarkerProps> = ({
   return (
     <div
       ref={markerRef}
-      className={`absolute top-1/2 -translate-y-1/2 cursor-pointer transition-transform hover:scale-110 ${
-        isDragging ? "scale-125 z-50" : ""
+      className={`absolute top-1/2 cursor-pointer z-10 ${
+        isDragging ? "z-50" : ""
       }`}
       style={{
         left: xPosition,
-        transform: `translate(-50%, -50%) rotate(45deg) ${isDragging ? "scale(1.25)" : ""}`,
+        transform: 'translate(-50%, -50%)',
       }}
       onMouseDown={handleMouseDown}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onContextMenu={handleContextMenu}
       onDoubleClick={handleDoubleClick}
     >
       <div
-        className={`w-2.5 h-2.5 rounded-sm transition-all ${
-          isSelected ? "ring-2 ring-white ring-offset-1 ring-offset-background-secondary" : ""
-        }`}
+        className={`w-2.5 h-2.5 rotate-45 rounded-[1px] transition-all ${
+          isSelected ? "ring-2 ring-white ring-offset-1 ring-offset-transparent" : ""
+        } ${isDragging ? "scale-125" : "hover:scale-110"}`}
         style={{
           backgroundColor: color,
-          boxShadow: isSelected ? `0 0 8px ${color}` : "none",
+          boxShadow: isSelected ? `0 0 8px ${color}` : `0 0 2px rgba(0,0,0,0.5)`,
         }}
       />
 
-      {isSelected && (
-        <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 rotate-[-45deg] whitespace-nowrap">
-          <span className="text-[8px] text-text-muted bg-background-secondary/80 px-1 rounded">
-            {keyframe.time.toFixed(2)}s
+      {(isHovered || isDragging) && (
+        <div
+          className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap pointer-events-none"
+          style={{ bottom: '100%', marginBottom: 4 }}
+        >
+          <span className="text-[9px] text-white bg-black/80 px-1.5 py-0.5 rounded">
+            {label || keyframe.property} {keyframe.time.toFixed(2)}s
           </span>
         </div>
       )}

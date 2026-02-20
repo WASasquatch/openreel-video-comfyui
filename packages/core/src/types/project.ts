@@ -8,6 +8,8 @@ export interface ProjectSettings {
   readonly frameRate: number;
   readonly sampleRate: number;
   readonly channels: number;
+  readonly viewportWidth?: number;
+  readonly viewportHeight?: number;
 }
 
 export interface Project {

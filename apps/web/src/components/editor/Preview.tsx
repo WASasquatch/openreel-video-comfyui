@@ -557,12 +557,16 @@ export const Preview: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    // Use viewport dimensions if set, otherwise use output dimensions
+    const canvasWidth = settings.viewportWidth ?? settings.width;
+    const canvasHeight = settings.viewportHeight ?? settings.height;
+
     // Always ensure canvas has correct size
-    if (canvas.width !== settings.width || canvas.height !== settings.height) {
-      canvas.width = settings.width;
-      canvas.height = settings.height;
+    if (canvas.width !== canvasWidth || canvas.height !== canvasHeight) {
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
     }
-  }, [settings.width, settings.height]);
+  }, [settings.width, settings.height, settings.viewportWidth, settings.viewportHeight]);
 
   useEffect(() => {
     if (isRenderBridgeReady && canvasRef.current) {

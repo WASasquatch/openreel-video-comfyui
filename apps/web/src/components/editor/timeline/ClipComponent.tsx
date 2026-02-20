@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useMemo } from "react";
 import { Image } from "lucide-react";
 import type { Clip, Track } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
@@ -47,8 +47,8 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   onSnapIndicator,
   onTrimClip,
 }) => {
-  const { getMediaItem } = useProjectStore();
-  const { snapSettings } = useUIStore();
+  const { getMediaItem, updateClipKeyframes } = useProjectStore();
+  const { snapSettings, setPanelVisible } = useUIStore();
   const { playheadPosition } = useTimelineStore();
   const mediaItem = getMediaItem(clip.mediaId);
   const [isDragging, setIsDragging] = useState(false);
@@ -80,6 +80,134 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     startY: 0,
   });
   const clipRef = useRef<HTMLDivElement>(null);
+
+  // Memoize keyframe lanes rendering
+  const keyframeLanes = useMemo(() => {
+    if (!clip.keyframes || clip.keyframes.length === 0) return null;
+
+    const KEYFRAME_LANE_HEIGHT = 16;
+    const PROPERTY_COLORS: Record<string, string> = {
+      "opacity": "#fbbf24",
+      "position.x": "#22d3ee",
+      "position.y": "#a78bfa",
+      "scale.x": "#fb923c",
+      "scale.y": "#f472b6",
+      "rotation": "#34d399",
+      "default": "#6b7280",
+    };
+
+    const keyframesByProperty = new Map<string, typeof clip.keyframes>();
+    for (const kf of clip.keyframes) {
+      const existing = keyframesByProperty.get(kf.property) || [];
+      existing.push(kf);
+      keyframesByProperty.set(kf.property, existing);
+    }
+
+    const properties = Array.from(keyframesByProperty.keys()).sort();
+    const totalLanesHeight = properties.length * KEYFRAME_LANE_HEIGHT;
+
+    return (
+      <div 
+        className="absolute bottom-0 left-0 right-0 pointer-events-auto z-20"
+        style={{ height: totalLanesHeight }}
+      >
+        {properties.map((property, idx) => {
+          const propertyKeyframes = keyframesByProperty.get(property)!;
+          const color = PROPERTY_COLORS[property] || PROPERTY_COLORS.default;
+
+          return (
+            <div
+              key={property}
+              className="absolute left-0 right-0"
+              style={{
+                bottom: idx * KEYFRAME_LANE_HEIGHT,
+                height: KEYFRAME_LANE_HEIGHT,
+                background: 'rgba(0,0,0,0.2)',
+              }}
+            >
+              <div
+                className="absolute left-0 right-0"
+                style={{
+                  top: KEYFRAME_LANE_HEIGHT / 2,
+                  height: 1,
+                  background: 'rgba(255,255,255,0.1)',
+                }}
+              />
+
+              {propertyKeyframes.map((kf) => {
+                const xPos = (kf.time / clip.duration) * 100;
+
+                const handleKeyframeMouseDown = (e: React.MouseEvent, keyframeId: string) => {
+                  e.stopPropagation();
+
+                  const clipElement = e.currentTarget.closest('[data-clip-id]') as HTMLElement;
+                  if (!clipElement) return;
+
+                  const startX = e.clientX;
+                  const clipRect = clipElement.getBoundingClientRect();
+                  const clipWidth = clipRect.width;
+                  let hasMoved = false;
+
+                  const handleMouseMove = (moveEvent: MouseEvent) => {
+                    const deltaX = moveEvent.clientX - startX;
+                    if (Math.abs(deltaX) > 3) hasMoved = true;
+
+                    const currentXInClip = (xPos / 100) * clipWidth + deltaX;
+                    const newTimePercent = Math.max(0, Math.min(100, (currentXInClip / clipWidth) * 100));
+                    const newTime = (newTimePercent / 100) * clip.duration;
+
+                    const updatedKeyframes = clip.keyframes!.map(k =>
+                      k.id === keyframeId ? { ...k, time: newTime } : k
+                    );
+                    updateClipKeyframes(clip.id, updatedKeyframes);
+                  };
+
+                  const handleMouseUp = (upEvent: MouseEvent) => {
+                    upEvent.stopPropagation();
+                    upEvent.preventDefault();
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+
+                    if (!hasMoved) {
+                      onSelect(clip.id, false);
+                      setPanelVisible('inspector', true);
+                      sessionStorage.setItem('openreel_selected_keyframe_property', property);
+                    }
+                  };
+
+                  document.addEventListener('mousemove', handleMouseMove);
+                  document.addEventListener('mouseup', handleMouseUp);
+                };
+
+                return (
+                  <div
+                    key={kf.id}
+                    className="absolute pointer-events-auto cursor-move z-30"
+                    style={{
+                      left: `${xPos}%`,
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                    title={`${property}: ${kf.value}`}
+                    onMouseDown={(e) => handleKeyframeMouseDown(e, kf.id)}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div
+                      className="w-2 h-2 rotate-45"
+                      style={{
+                        backgroundColor: color,
+                        boxShadow: '0 0 2px rgba(0,0,0,0.5)',
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [clip.keyframes, clip.duration, clip.id, onSelect, updateClipKeyframes, setPanelVisible]);
 
   const left = clip.startTime * pixelsPerSecond;
   const width = clip.duration * pixelsPerSecond;
@@ -344,6 +472,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       <ContextMenuTrigger asChild>
         <div
           ref={clipRef}
+          data-clip-id={clip.id}
           onClick={handleClick}
           onMouseDown={handleMouseDown}
           className={`group absolute top-1 bottom-1 rounded-lg overflow-hidden shadow-sm ${
@@ -429,7 +558,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         </div>
       )}
 
-      <div className="w-full h-full flex flex-col justify-end px-2 pb-1 relative z-10 pointer-events-none">
+      <div className="w-full h-full flex flex-col justify-start px-2 pt-1 relative z-10 pointer-events-none">
         <span
           className={`text-[10px] font-medium truncate drop-shadow-md ${
             isSelected ? clipStyle.selectedText : clipStyle.text
@@ -479,33 +608,18 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         </>
       )}
 
-      {clip.keyframes && clip.keyframes.length > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 h-3 flex items-center pointer-events-none">
-          {clip.keyframes.map((kf) => {
-            const relativeTime = kf.time - clip.startTime;
-            if (relativeTime < 0 || relativeTime > clip.duration) return null;
-            const posPercent = (relativeTime / clip.duration) * 100;
-            return (
-              <div
-                key={kf.id}
-                className="absolute w-2 h-2 bg-yellow-400 rotate-45 border border-yellow-600"
-                style={{ left: `${posPercent}%`, marginLeft: "-4px" }}
-                title={`${kf.property} @ ${kf.time.toFixed(2)}s`}
-              />
-            );
-          })}
-        </div>
-      )}
-
       {isSelected && (
         <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none shadow-[inset_0_0_10px_rgba(34,197,94,0.2)]" />
       )}
+
+      {/* Keyframe lanes */}
+      {keyframeLanes}
 
       {(isVideo || isImage || isAudio) && onTrimClip && (
         <>
           <div
             onMouseDown={handleTrimMouseDown("left")}
-            className={`absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-20 opacity-0 group-hover:opacity-100 transition-opacity ${
+            className={`absolute left-0 top-0 bottom-0 w-3 cursor-ew-resize z-10 opacity-0 group-hover:opacity-100 transition-opacity ${
               isAudio ? "hover:bg-blue-400/50" : isVideo ? "hover:bg-green-400/50" : "hover:bg-purple-400/50"
             }`}
             onClick={(e) => e.stopPropagation()}
@@ -513,7 +627,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           />
           <div
             onMouseDown={handleTrimMouseDown("right")}
-            className={`absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-20 opacity-0 group-hover:opacity-100 transition-opacity ${
+            className={`absolute right-0 top-0 bottom-0 w-3 cursor-ew-resize z-10 opacity-0 group-hover:opacity-100 transition-opacity ${
               isAudio ? "hover:bg-blue-400/50" : isVideo ? "hover:bg-green-400/50" : "hover:bg-purple-400/50"
             }`}
             onClick={(e) => e.stopPropagation()}

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Key,
   Plus,
@@ -27,6 +27,7 @@ interface AnimatableProperty {
   min?: number;
   max?: number;
   step?: number;
+  supportedTrackTypes?: ("video" | "image" | "audio" | "graphics" | "text")[];
 }
 
 const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
@@ -37,6 +38,7 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     defaultValue: 0,
     min: -2000,
     max: 2000,
+    supportedTrackTypes: ["video", "image", "graphics", "text"],
   },
   {
     id: "position.y",
@@ -45,6 +47,7 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     defaultValue: 0,
     min: -2000,
     max: 2000,
+    supportedTrackTypes: ["video", "image", "graphics", "text"],
   },
   {
     id: "scale.x",
@@ -52,8 +55,9 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     category: "Transform",
     defaultValue: 1,
     min: 0,
-    max: 10,
+    max: 16,
     step: 0.01,
+    supportedTrackTypes: ["video", "image", "graphics", "text"],
   },
   {
     id: "scale.y",
@@ -61,8 +65,9 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     category: "Transform",
     defaultValue: 1,
     min: 0,
-    max: 10,
+    max: 16,
     step: 0.01,
+    supportedTrackTypes: ["video", "image", "graphics", "text"],
   },
   {
     id: "rotation",
@@ -71,6 +76,7 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     defaultValue: 0,
     min: -360,
     max: 360,
+    supportedTrackTypes: ["video", "image", "graphics", "text"],
   },
   {
     id: "opacity",
@@ -80,6 +86,7 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     min: 0,
     max: 1,
     step: 0.01,
+    supportedTrackTypes: ["video", "image", "graphics", "text"],
   },
   // Effect parameters
   {
@@ -89,6 +96,7 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     defaultValue: 0,
     min: -100,
     max: 100,
+    supportedTrackTypes: ["video", "image"],
   },
   {
     id: "effect.contrast",
@@ -98,6 +106,7 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     min: 0,
     max: 2,
     step: 0.01,
+    supportedTrackTypes: ["video", "image"],
   },
   {
     id: "effect.saturation",
@@ -107,6 +116,7 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     min: 0,
     max: 2,
     step: 0.01,
+    supportedTrackTypes: ["video", "image"],
   },
   {
     id: "effect.blur",
@@ -115,6 +125,7 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     defaultValue: 0,
     min: 0,
     max: 100,
+    supportedTrackTypes: ["video", "image"],
   },
   {
     id: "volume",
@@ -124,15 +135,17 @@ const ANIMATABLE_PROPERTIES: AnimatableProperty[] = [
     min: 0,
     max: 2,
     step: 0.01,
+    supportedTrackTypes: ["audio", "video"],
   },
   {
     id: "pan",
-    label: "Pan",
+    label: "Pan (Audio L/R)",
     category: "Audio",
     defaultValue: 0,
     min: -1,
     max: 1,
     step: 0.01,
+    supportedTrackTypes: ["audio", "video"],
   },
 ];
 
@@ -194,17 +207,32 @@ const PropertySelector: React.FC<{
                         onSelect(prop.id);
                         setIsOpen(false);
                       }}
-                      className={`w-full px-3 py-2 text-left text-[10px] flex items-center justify-between hover:bg-background-tertiary transition-colors ${
+                      className={`w-full px-3 py-1.5 text-left text-[10px] hover:bg-background-tertiary transition-colors flex items-center justify-between gap-2 ${
                         selectedProperty === prop.id
-                          ? "bg-primary/10 text-primary"
+                          ? "bg-background-tertiary text-primary"
                           : "text-text-primary"
                       }`}
                     >
-                      <span>{prop.label}</span>
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span className="truncate">{prop.label}</span>
+                        {prop.supportedTrackTypes && (
+                          <div className="flex gap-0.5 flex-shrink-0">
+                            {prop.supportedTrackTypes.map((type) => (
+                              <span
+                                key={type}
+                                className="text-[7px] px-1 py-0.5 rounded bg-background-secondary text-text-muted uppercase font-medium"
+                                title={`Works with ${type} tracks`}
+                              >
+                                {type[0]}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       {hasKeyframes && (
                         <Diamond
                           size={10}
-                          className="text-primary fill-primary"
+                          className="text-primary fill-primary flex-shrink-0"
                         />
                       )}
                     </button>
@@ -322,7 +350,8 @@ const KeyframeItem: React.FC<{
   onDelete: () => void;
   onEasingChange: (easing: EasingName) => void;
   property: AnimatableProperty | undefined;
-}> = ({ keyframe, onUpdate, onDelete, onEasingChange, property }) => {
+  clipStartTime: number;
+}> = ({ keyframe, onUpdate, onDelete, onEasingChange, property, clipStartTime }) => {
   const _formatValue = (value: unknown): string => {
     if (typeof value === "number") {
       return value.toFixed(property?.step && property.step < 1 ? 2 : 0);
@@ -339,8 +368,8 @@ const KeyframeItem: React.FC<{
       />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-text-secondary">
-            {keyframe.time.toFixed(2)}s
+          <span className="text-[10px] text-text-secondary" title="Timeline position">
+            {(clipStartTime + keyframe.time).toFixed(2)}s
           </span>
           <span className="text-[10px] text-text-muted">•</span>
           <input
@@ -387,6 +416,30 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
   const getTitleEngine = useEngineStore((state) => state.getTitleEngine);
 
   const [selectedProperty, setSelectedProperty] = useState<string | null>(null);
+  const [keyframesMigrated, setKeyframesMigrated] = useState(false);
+
+  // Check for property selection from keyframe click in timeline
+  useEffect(() => {
+    const checkSessionStorage = () => {
+      const storedProperty = sessionStorage.getItem('openreel_selected_keyframe_property');
+      if (storedProperty) {
+        setSelectedProperty(storedProperty);
+        sessionStorage.removeItem('openreel_selected_keyframe_property');
+      }
+    };
+    
+    // Check immediately
+    checkSessionStorage();
+    
+    // Also check periodically for a short time in case of timing issues
+    const interval = setInterval(checkSessionStorage, 100);
+    const timeout = setTimeout(() => clearInterval(interval), 1000);
+    
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [clipId]);
 
   const clip = useMemo(() => {
     const timelineClip = getClip(clipId);
@@ -408,6 +461,34 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
 
     return undefined;
   }, [clipId, getClip, getGraphicsEngine, getTitleEngine, project.modifiedAt]);
+  
+  // Migrate old absolute-time keyframes to clip-local time (backward compatibility)
+  useEffect(() => {
+    if (!clip || keyframesMigrated || !clip.keyframes || clip.keyframes.length === 0) return;
+    
+    const clipStartTime = clip.startTime || 0;
+    let needsMigration = false;
+    
+    // Check if any keyframes appear to be in absolute time (time >= clipStartTime)
+    // This heuristic detects old keyframes that were stored as absolute timeline positions
+    const migratedKeyframes = clip.keyframes.map(kf => {
+      // If keyframe time is significantly larger than what we'd expect for clip-local time,
+      // and it's close to an absolute timeline position, migrate it
+      if (kf.time >= clipStartTime && clipStartTime > 0) {
+        needsMigration = true;
+        return { ...kf, time: kf.time - clipStartTime };
+      }
+      return kf;
+    });
+    
+    if (needsMigration) {
+      console.log(`[KeyframesSection] Migrating ${clip.keyframes.length} keyframes from absolute to clip-local time for clip ${clipId}`);
+      updateClipKeyframes(clipId, migratedKeyframes);
+    }
+    
+    setKeyframesMigrated(true);
+  }, [clip, clipId, updateClipKeyframes, keyframesMigrated]);
+  
   const keyframes = clip?.keyframes || [];
 
   const propertiesWithKeyframes = useMemo(() => {
@@ -427,27 +508,34 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
     if (!selectedProperty || propertyKeyframes.length === 0) {
       return propertyDef?.defaultValue ?? 0;
     }
+    // Convert absolute timeline time to clip-local time for interpolation
+    const clipLocalTime = playheadPosition - (clip?.startTime || 0);
     const result = keyframeEngine.getValueAtTime(
       propertyKeyframes,
-      playheadPosition,
+      clipLocalTime,
     );
     return result.value;
-  }, [selectedProperty, propertyKeyframes, playheadPosition, propertyDef]);
+  }, [selectedProperty, propertyKeyframes, playheadPosition, propertyDef, clip]);
 
   const hasKeyframeAtPlayhead = useMemo(() => {
     if (!selectedProperty) return false;
+    // Convert absolute timeline time to clip-local time
+    const clipLocalTime = playheadPosition - (clip?.startTime || 0);
     return propertyKeyframes.some(
-      (kf) => Math.abs(kf.time - playheadPosition) < 0.01,
+      (kf) => Math.abs(kf.time - clipLocalTime) < 0.01,
     );
-  }, [selectedProperty, propertyKeyframes, playheadPosition]);
+  }, [selectedProperty, propertyKeyframes, playheadPosition, clip]);
 
   const handleAddKeyframe = useCallback(() => {
     if (!selectedProperty || !clip) return;
 
+    // Convert absolute timeline time to clip-local time
+    const clipLocalTime = playheadPosition - (clip.startTime || 0);
+
     const newKeyframe = keyframeEngine.addKeyframe(
       clipId,
       selectedProperty,
-      playheadPosition,
+      clipLocalTime,
       currentValue,
       "linear",
     );
@@ -566,12 +654,13 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
               Keyframes ({propertyKeyframes.length})
             </span>
           </div>
-          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+          <div className="space-y-1.5 max-h-48 overflow-visible">
             {propertyKeyframes.map((kf) => (
               <KeyframeItem
                 key={kf.id}
                 keyframe={kf}
                 property={propertyDef}
+                clipStartTime={clip?.startTime || 0}
                 onUpdate={(updates) => handleUpdateKeyframe(kf.id, updates)}
                 onDelete={() => handleDeleteKeyframe(kf.id)}
                 onEasingChange={(easing) => handleEasingChange(kf.id, easing)}

@@ -1,7 +1,6 @@
 import React, { useMemo, useCallback } from "react";
 import type { Keyframe, Clip } from "@openreel/core";
 import { KeyframeMarker } from "./KeyframeMarker";
-import { EasingCurve } from "./EasingCurve";
 
 const PROPERTY_COLORS: Record<string, string> = {
   "position.x": "#22d3ee",
@@ -80,64 +79,45 @@ export const KeyframeTrack: React.FC<KeyframeTrackProps> = ({
     [clip.keyframes, clip.duration, pixelsPerSecond, onKeyframeMove]
   );
 
-  if (propertyGroups.length === 0) {
-    return (
-      <div className="h-8 flex items-center justify-center text-[9px] text-text-muted">
-        No keyframes
-      </div>
-    );
-  }
+  if (propertyGroups.length === 0) return null;
 
-  const PROPERTY_ROW_HEIGHT = 24;
+  const PROPERTY_ROW_HEIGHT = 20;
 
   return (
-    <div className="bg-background-tertiary/30 border-t border-border/30">
+    <div style={{ background: 'rgba(0,0,0,0.125)' }}>
       {propertyGroups.map((group) => (
         <div
           key={group.property}
-          className="relative border-b border-border/20 last:border-b-0"
+          className="relative"
           style={{ height: PROPERTY_ROW_HEIGHT }}
         >
-          <div className="absolute left-0 top-0 bottom-0 w-20 flex items-center px-2 bg-background-tertiary/50 border-r border-border/30 z-10">
-            <div
-              className="w-2 h-2 rounded-full mr-1.5 flex-shrink-0"
-              style={{ backgroundColor: group.color }}
-            />
-            <span className="text-[9px] text-text-muted truncate">
-              {group.label}
-            </span>
-          </div>
+          {/* Center track line */}
+          <div
+            className="absolute left-0 right-0"
+            style={{ top: PROPERTY_ROW_HEIGHT / 2, height: 1, background: 'rgba(0,0,0,0.2)' }}
+          />
 
-          <div className="absolute left-20 right-0 top-0 bottom-0">
-            {group.keyframes.map((keyframe, index) => {
-              const nextKeyframe = group.keyframes[index + 1];
+          {/* Keyframe diamonds */}
+          <div className="absolute left-0 right-0 top-0 bottom-0">
+            {group.keyframes.map((keyframe) => {
               const xPos = keyframe.time * pixelsPerSecond;
 
               return (
-                <React.Fragment key={keyframe.id}>
-                  {nextKeyframe && (
-                    <EasingCurve
-                      startX={xPos}
-                      endX={nextKeyframe.time * pixelsPerSecond}
-                      easing={keyframe.easing}
-                      color={group.color}
-                      height={PROPERTY_ROW_HEIGHT}
-                    />
-                  )}
-                  <KeyframeMarker
-                    keyframe={keyframe}
-                    xPosition={xPos}
-                    color={group.color}
-                    isSelected={selectedKeyframeIds.includes(keyframe.id)}
-                    onSelect={(addToSelection) =>
-                      onKeyframeSelect(keyframe.id, addToSelection)
-                    }
-                    onMove={(deltaPixels) =>
-                      handleKeyframeMove(keyframe.id, deltaPixels)
-                    }
-                    onDelete={() => onKeyframeDelete(keyframe.id)}
-                  />
-                </React.Fragment>
+                <KeyframeMarker
+                  key={keyframe.id}
+                  keyframe={keyframe}
+                  xPosition={xPos}
+                  color={group.color}
+                  label={group.label}
+                  isSelected={selectedKeyframeIds.includes(keyframe.id)}
+                  onSelect={(addToSelection) =>
+                    onKeyframeSelect(keyframe.id, addToSelection)
+                  }
+                  onMove={(deltaPixels) =>
+                    handleKeyframeMove(keyframe.id, deltaPixels)
+                  }
+                  onDelete={() => onKeyframeDelete(keyframe.id)}
+                />
               );
             })}
           </div>

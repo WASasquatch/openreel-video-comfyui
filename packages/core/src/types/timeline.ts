@@ -95,6 +95,7 @@ export interface Keyframe {
   readonly property: string;
   readonly value: unknown;
   readonly easing: EasingType;
+  readonly color?: string; // Optional hex color for visual identification
 }
 
 export type EasingType =

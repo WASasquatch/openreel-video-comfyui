@@ -700,14 +700,7 @@ export const Toolbar: React.FC = () => {
         quality: 85,
       };
 
-      const manualDuration = project.timeline?.duration;
-      const calculatedDuration = project.timeline?.tracks ? Math.max(...project.timeline.tracks.flatMap(t => t.clips.map(c => c.startTime + (c.outPoint - c.inPoint)))) : 0;
-      const usingDuration = manualDuration && manualDuration > 0 ? manualDuration : calculatedDuration;
-      
       console.log("[OpenReel] Starting FFmpeg export with settings:", videoSettings);
-      console.log("[OpenReel] Export duration - Manual:", manualDuration, "Calculated:", calculatedDuration, "Using:", usingDuration);
-      alert(`Export starting:\nManual duration: ${manualDuration}s\nCalculated duration: ${calculatedDuration.toFixed(2)}s\nWill export: ${usingDuration}s`);
-      
       const generator = engine.exportVideoWithFFmpeg(project, videoSettings);
       let finalResult: ExportResult | undefined;
 
@@ -1293,10 +1286,6 @@ export const Toolbar: React.FC = () => {
 
       {isHistoryOpen && (
         <>
-          <div
-            className="fixed inset-0 bg-black/20 z-40"
-            onClick={() => setIsHistoryOpen(false)}
-          />
           <div className="fixed top-16 right-0 bottom-0 w-80 bg-background-secondary border-l border-border z-50 shadow-2xl animate-in slide-in-from-right duration-200">
             <div className="flex items-center justify-between p-3 border-b border-border">
               <span className="text-sm font-medium text-text-primary">Action History</span>

@@ -68,7 +68,6 @@ export const Timeline: React.FC = () => {
     deleteTextClip,
     removeMarker,
     updateMarker,
-    updateClipKeyframes,
     setTimelineDuration,
   } = useProjectStore();
   const tracks = project.timeline.tracks;
@@ -151,13 +150,59 @@ export const Timeline: React.FC = () => {
     return Math.max(maxEnd, 60); // Minimum 60 seconds
   }, [tracks, project.timeline?.duration]);
 
+  const KEYFRAME_ROW_HEIGHT = 20;
+
+  const getKeyframeRowsHeight = useCallback(
+    (trackId: string) => {
+      const track = tracks.find((t) => t.id === trackId);
+      if (!track) return 0;
+
+      const properties = new Set<string>();
+      for (const clip of track.clips) {
+        if (clip.keyframes) {
+          for (const kf of clip.keyframes) {
+            properties.add(kf.property);
+          }
+        }
+      }
+
+      const trackTextClips = getTextClipsForTrack(trackId);
+      for (const tc of trackTextClips) {
+        if ((tc as any).keyframes) {
+          for (const kf of (tc as any).keyframes) {
+            properties.add(kf.property);
+          }
+        }
+      }
+
+      const trackShapeClips = getShapeClipsForTrack(trackId);
+      for (const sc of trackShapeClips) {
+        if ((sc as any).keyframes) {
+          for (const kf of (sc as any).keyframes) {
+            properties.add(kf.property);
+          }
+        }
+      }
+
+      return properties.size * KEYFRAME_ROW_HEIGHT;
+    },
+    [tracks, getTextClipsForTrack, getShapeClipsForTrack]
+  );
+
+  const getTotalTrackHeight = useCallback(
+    (trackId: string) => {
+      return getTrackHeight(trackId) + getKeyframeRowsHeight(trackId);
+    },
+    [getTrackHeight, getKeyframeRowsHeight]
+  );
+
   const totalTracksHeight = useMemo(() => {
     let height = 0;
     for (const track of tracks) {
-      height += getTrackHeight(track.id);
+      height += getTotalTrackHeight(track.id);
     }
     return height;
-  }, [tracks, getTrackHeight]);
+  }, [tracks, getTotalTrackHeight]);
 
   const trackHeightsMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -258,66 +303,6 @@ export const Timeline: React.FC = () => {
     [tracks, select, allTextClips, allShapeClips],
   );
 
-  const [selectedKeyframeIds, setSelectedKeyframeIds] = useState<string[]>([]);
-
-  const handleKeyframeSelect = useCallback(
-    (keyframeId: string, addToSelection: boolean) => {
-      if (addToSelection) {
-        setSelectedKeyframeIds((prev) =>
-          prev.includes(keyframeId)
-            ? prev.filter((id) => id !== keyframeId)
-            : [...prev, keyframeId]
-        );
-      } else {
-        setSelectedKeyframeIds([keyframeId]);
-      }
-    },
-    []
-  );
-
-  const handleKeyframeMove = useCallback(
-    (keyframeId: string, newTime: number) => {
-      for (const track of tracks) {
-        for (const clip of track.clips) {
-          const keyframe = clip.keyframes?.find((kf) => kf.id === keyframeId);
-          if (keyframe) {
-            const updatedKeyframes = clip.keyframes?.map((kf) =>
-              kf.id === keyframeId ? { ...kf, time: Math.max(0, newTime) } : kf
-            );
-            if (updatedKeyframes) {
-              updateClipKeyframes(clip.id, updatedKeyframes);
-            }
-            return;
-          }
-        }
-      }
-    },
-    [tracks, updateClipKeyframes]
-  );
-
-  const handleKeyframeDelete = useCallback(
-    (keyframeId: string) => {
-      for (const track of tracks) {
-        for (const clip of track.clips) {
-          const keyframe = clip.keyframes?.find((kf) => kf.id === keyframeId);
-          if (keyframe) {
-            const updatedKeyframes = clip.keyframes?.filter(
-              (kf) => kf.id !== keyframeId
-            );
-            if (updatedKeyframes) {
-              updateClipKeyframes(clip.id, updatedKeyframes);
-            }
-            setSelectedKeyframeIds((prev) =>
-              prev.filter((id) => id !== keyframeId)
-            );
-            return;
-          }
-        }
-      }
-    },
-    [tracks, updateClipKeyframes]
-  );
-
   const handleSplit = useCallback(async () => {
     if (selectedClipIds.length === 1) {
       await splitClip(selectedClipIds[0], playheadPosition);
@@ -357,10 +342,6 @@ export const Timeline: React.FC = () => {
     deleteShapeClip,
     deleteSVGClip,
   ]);
-
-  const handleBackgroundClick = useCallback(() => {
-    clearSelection();
-  }, [clearSelection]);
 
   const handleBoxSelectionStart = useCallback(
     (e: React.MouseEvent) => {
@@ -422,7 +403,7 @@ export const Timeline: React.FC = () => {
 
     // Iterate through tracks to find which are overlapped by selection box
     for (const track of tracks) {
-      const trackH = getTrackHeight(track.id);
+      const trackH = getTotalTrackHeight(track.id);
       const trackMinY = currentY;
       const trackMaxY = currentY + trackH;
 
@@ -904,7 +885,6 @@ export const Timeline: React.FC = () => {
       <div
         ref={containerRef}
         className="flex-1 flex flex-col overflow-hidden relative"
-        onClick={handleBackgroundClick}
       >
         <div className="flex shrink-0">
           <div className="w-32 h-8 bg-background-tertiary border-b border-r border-border shrink-0" />
@@ -952,6 +932,7 @@ export const Timeline: React.FC = () => {
                   <div
                     key={track.id}
                     className={draggedTrackId === track.id ? "opacity-50" : ""}
+                    style={{ height: getTotalTrackHeight(track.id) }}
                   >
                     <TrackHeader
                       track={track}
@@ -1007,12 +988,8 @@ export const Timeline: React.FC = () => {
                   onMoveTextClip={handleMoveTextClip}
                   onTrimShapeClip={handleTrimShapeClip}
                   scrollX={scrollX}
-                  trackHeight={getTrackHeight(track.id)}
+                  trackHeight={getTotalTrackHeight(track.id)}
                   onResizeTrack={setTrackHeightById}
-                  onKeyframeSelect={handleKeyframeSelect}
-                  onKeyframeMove={handleKeyframeMove}
-                  onKeyframeDelete={handleKeyframeDelete}
-                  selectedKeyframeIds={selectedKeyframeIds}
                 />
               ))}
 

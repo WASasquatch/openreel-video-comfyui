@@ -1,26 +1,16 @@
-import React, { useRef, useCallback, useEffect, useState, useMemo } from "react";
-import type {
-  Track,
-  TextClip,
-  ShapeClip,
-  SVGClip,
-  StickerClip,
-} from "@openreel/core";
+import React, { useCallback, useRef, useState, useEffect } from "react";
+import type { Track } from "@openreel/core";
 import { ClipComponent } from "./ClipComponent";
 import { TextClipComponent } from "./TextClipComponent";
 import { ShapeClipComponent } from "./ShapeClipComponent";
-import { KeyframeTrack } from "./KeyframeTrack";
-import { useTimelineStore } from "../../../stores/timeline-store";
-
-type GraphicClipUnion = ShapeClip | SVGClip | StickerClip;
 
 interface TrackLaneProps {
   track: Track;
   allTracks: Track[];
   pixelsPerSecond: number;
   selectedClipIds: string[];
-  textClips: TextClip[];
-  shapeClips: GraphicClipUnion[];
+  textClips: Array<any>;
+  shapeClips: Array<any>;
   trackHeights: Map<string, number>;
   timelineRef: React.RefObject<HTMLDivElement>;
   onSelectClip: (clipId: string, addToSelection: boolean) => void;
@@ -30,19 +20,23 @@ interface TrackLaneProps {
     newStartTime: number,
     targetTrackId?: string,
   ) => void;
-  onMoveTextClip: (clipId: string, newStartTime: number) => void;
+  onMoveTextClip: (
+    clipId: string,
+    newStartTime: number,
+    targetTrackId?: string,
+  ) => void;
   onSnapIndicator: (time: number | null) => void;
   onTrimClip?: (
     clipId: string,
     edge: "left" | "right",
     newTime: number,
   ) => void;
-  onTrimTextClip: (
+  onTrimTextClip?: (
     clipId: string,
     edge: "left" | "right",
     newTime: number,
   ) => void;
-  onTrimShapeClip: (
+  onTrimShapeClip?: (
     clipId: string,
     edge: "left" | "right",
     newTime: number,
@@ -50,10 +44,6 @@ interface TrackLaneProps {
   scrollX: number;
   trackHeight: number;
   onResizeTrack: (trackId: string, newHeight: number) => void;
-  onKeyframeSelect?: (keyframeId: string, addToSelection: boolean) => void;
-  onKeyframeMove?: (keyframeId: string, newTime: number) => void;
-  onKeyframeDelete?: (keyframeId: string) => void;
-  selectedKeyframeIds?: string[];
 }
 
 export const TrackLane: React.FC<TrackLaneProps> = ({
@@ -76,22 +66,12 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
   scrollX,
   trackHeight,
   onResizeTrack,
-  onKeyframeSelect,
-  onKeyframeMove,
-  onKeyframeDelete,
-  selectedKeyframeIds = [],
 }) => {
-  const { isTrackExpanded } = useTimelineStore();
-  const isExpanded = isTrackExpanded(track.id);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const laneRef = useRef<HTMLDivElement>(null);
   const resizeStartY = useRef<number>(0);
   const resizeStartHeight = useRef<number>(0);
-
-  const clipsWithKeyframes = useMemo(() => {
-    return track.clips.filter((clip) => clip.keyframes && clip.keyframes.length > 0);
-  }, [track.clips]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -174,10 +154,11 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
 
   return (
     <div className="relative">
+      {/* Clip area */}
       <div
         ref={laneRef}
         style={{ height: trackHeight }}
-        className={`border-b border-border/50 relative transition-colors ${
+        className={`relative z-0 overflow-hidden border-b border-border/50 transition-colors ${
           isDragOver
             ? "bg-primary/10 border-primary/30"
             : "bg-background-secondary/20"
@@ -212,7 +193,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
             pixelsPerSecond={pixelsPerSecond}
             isSelected={selectedClipIds.includes(textClip.id)}
             onSelect={onSelectClip}
-            onTrim={onTrimTextClip}
+            onTrim={onTrimTextClip!}
             onMoveClip={onMoveTextClip}
           />
         ))}
@@ -223,7 +204,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
             pixelsPerSecond={pixelsPerSecond}
             isSelected={selectedClipIds.includes(shapeClip.id)}
             onSelect={onSelectClip}
-            onTrim={onTrimShapeClip}
+            onTrim={onTrimShapeClip!}
             onMoveClip={onMoveClip}
           />
         ))}
@@ -235,32 +216,15 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
           </div>
         )}
       </div>
+
+
+      {/* Resize handle */}
       <div
         className={`absolute bottom-0 left-0 right-0 h-1 cursor-row-resize hover:bg-primary/50 transition-colors z-10 ${
           isResizing ? "bg-primary" : ""
         }`}
         onMouseDown={handleResizeStart}
       />
-      {isExpanded && clipsWithKeyframes.length > 0 && (
-        <div className="absolute left-0 right-0" style={{ top: trackHeight }}>
-          {clipsWithKeyframes.map((clip) => (
-            <div
-              key={`keyframes-${clip.id}`}
-              className="relative"
-              style={{ left: clip.startTime * pixelsPerSecond }}
-            >
-              <KeyframeTrack
-                clip={clip}
-                pixelsPerSecond={pixelsPerSecond}
-                onKeyframeSelect={onKeyframeSelect ?? (() => {})}
-                onKeyframeMove={onKeyframeMove ?? (() => {})}
-                onKeyframeDelete={onKeyframeDelete ?? (() => {})}
-                selectedKeyframeIds={selectedKeyframeIds}
-              />
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };

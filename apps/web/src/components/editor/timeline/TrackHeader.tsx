@@ -52,7 +52,7 @@ export const TrackHeader: React.FC<TrackHeaderProps> = ({
           onDragStart={(e) => onDragStart(e, track.id)}
           onDragOver={onDragOver}
           onDrop={(e) => onDrop(e, track.id)}
-          className={`h-20 border-b border-border flex flex-col justify-between py-2 px-3 relative group transition-colors cursor-grab active:cursor-grabbing ${
+          className={`h-full border-b border-border flex flex-col justify-between py-2 px-3 relative group transition-colors cursor-grab active:cursor-grabbing ${
             track.hidden ? "opacity-50" : ""
           } ${
             track.locked ? "bg-background-secondary/50" : "bg-background-tertiary"
