@@ -42,7 +42,7 @@ export class ProjectSerializer {
       version: SCHEMA_VERSION,
       project: this.stripMediaBlobs(project),
     };
-    return JSON.stringify(projectFile, null, 2);
+    return JSON.stringify(projectFile, (k, v) => this.safeJsonReplacer(k, v), 2);
   }
 
   importFromJson(json: string): Project {
@@ -84,7 +84,7 @@ export class ProjectSerializer {
         description,
       },
     };
-    return JSON.stringify(projectFile, null, 2);
+    return JSON.stringify(projectFile, (k, v) => this.safeJsonReplacer(k, v), 2);
   }
 
   validateProjectJson(json: string): ValidationResult {
@@ -240,6 +240,8 @@ export class ProjectSerializer {
         blob: null,
         fileHandle: null,
         waveformData: null,
+        filmstripThumbnails: undefined,
+        thumbnailUrl: null,
       }),
     );
 
@@ -249,6 +251,22 @@ export class ProjectSerializer {
         items: strippedItems,
       },
     };
+  }
+
+  /**
+   * JSON replacer that converts non-serializable values to null
+   * instead of letting JSON.stringify throw.
+   */
+  private safeJsonReplacer(_key: string, value: unknown): unknown {
+    if (value === null || value === undefined) return value;
+    if (typeof value === "bigint") return Number(value);
+    if (typeof value === "function") return undefined;
+    if (typeof value === "symbol") return undefined;
+    if (value instanceof Blob || value instanceof File) return null;
+    if (value instanceof ArrayBuffer) return null;
+    if (ArrayBuffer.isView(value)) return null;
+    if (typeof FileSystemFileHandle !== "undefined" && value instanceof FileSystemFileHandle) return null;
+    return value;
   }
 
   private migrateProject(projectFile: ProjectFile): Project {

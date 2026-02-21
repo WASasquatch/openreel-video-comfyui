@@ -28,7 +28,7 @@ import { getWavEncoder } from "../wasm/wav";
 export class ExportEngine {
   private mediabunny: typeof import("mediabunny") | null = null;
   private initialized = false;
-  private videoEngine: VideoEngine | null = null;
+  public videoEngine: VideoEngine | null = null;
   private audioEngine: AudioEngine | null = null;
   private upscalingEngine: UpscalingEngine | null = null;
   private abortController: AbortController | null = null;
@@ -862,7 +862,7 @@ export class ExportEngine {
     return this.renderTimelineAudio(project);
   }
 
-  private isSimpleProject(project: Project): { simple: boolean; singleClip?: { mediaId: string; startTime: number; endTime: number; speed: number } } {
+  isSimpleProject(project: Project): { simple: boolean; singleClip?: { mediaId: string; startTime: number; endTime: number; speed: number } } {
     const { timeline } = project;
 
     const allTracks = timeline.tracks.filter(t => !t.hidden);
@@ -1736,7 +1736,7 @@ export class ExportEngine {
     }
   }
 
-  private async renderTimelineAudio(
+  async renderTimelineAudio(
     project: Project,
     _settings?: VideoExportSettings,
   ): Promise<AudioBuffer | null> {

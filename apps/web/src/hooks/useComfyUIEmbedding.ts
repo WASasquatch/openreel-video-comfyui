@@ -70,6 +70,27 @@ export function useComfyUIEmbedding({ enabled }: ComfyUIEmbeddingOptions) {
         }
       }
 
+      // Parent sends individual image URLs to import as image clips
+      if (event.data.type === "comfyui-import-images") {
+        const imageUrls: string[] = event.data.imageUrls || [];
+        const cacheKey = imageUrls.join("|");
+        if (cacheKey && cacheKey !== lastImportedUrl.current) {
+          lastImportedUrl.current = cacheKey;
+          autoImportImages(imageUrls, importMedia);
+        }
+      }
+
+      // Parent sends combined imports (multiple asset types at once)
+      if (event.data.type === "comfyui-import-combined") {
+        const imports: Array<{ type: string; [key: string]: unknown }> =
+          event.data.imports || [];
+        const cacheKey = JSON.stringify(imports);
+        if (cacheKey && cacheKey !== lastImportedUrl.current) {
+          lastImportedUrl.current = cacheKey;
+          autoImportCombined(imports, importMedia);
+        }
+      }
+
       // Parent can send updated theme colors
       if (event.data.type === "comfyui-theme-update" && event.data.theme) {
         const themeParams = new URLSearchParams();
@@ -267,6 +288,7 @@ function applyComfyUITheme(
 async function autoImportVideo(
   videoUrl: string,
   importMedia: (file: File) => Promise<{ success: boolean; error?: { message: string } }>,
+  index = 0,
 ) {
   try {
     console.log("[ComfyUI Embedding] Fetching video from:", videoUrl);
@@ -277,7 +299,8 @@ async function autoImportVideo(
     }
 
     const blob = await response.blob();
-    const file = new File([blob], "comfyui_video.mp4", { type: "video/mp4" });
+    const filename = `comfyui_video_${String(index).padStart(4, "0")}.mp4`;
+    const file = new File([blob], filename, { type: "video/mp4" });
 
     console.log("[ComfyUI Embedding] Importing video, size:", blob.size);
     const result = await importMedia(file);
@@ -292,9 +315,69 @@ async function autoImportVideo(
   }
 }
 
+async function autoImportImages(
+  imageUrls: string[],
+  importMedia: (file: File) => Promise<{ success: boolean; error?: { message: string } }>,
+) {
+  try {
+    console.log(`[ComfyUI Embedding] Importing ${imageUrls.length} images`);
+    for (let i = 0; i < imageUrls.length; i++) {
+      const url = imageUrls[i];
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          console.error(`[ComfyUI Embedding] Failed to fetch image ${i}:`, response.status);
+          continue;
+        }
+
+        const blob = await response.blob();
+        const filename = `comfyui_image_${String(i).padStart(4, "0")}.png`;
+        const file = new File([blob], filename, { type: "image/png" });
+
+        const result = await importMedia(file);
+        if (result.success) {
+          console.log(`[ComfyUI Embedding] Image ${i} imported successfully`);
+        } else {
+          console.error(`[ComfyUI Embedding] Image ${i} import failed:`, result.error?.message);
+        }
+      } catch (error) {
+        console.error(`[ComfyUI Embedding] Error importing image ${i}:`, error);
+      }
+    }
+    console.log(`[ComfyUI Embedding] Finished importing ${imageUrls.length} images`);
+  } catch (error) {
+    console.error("[ComfyUI Embedding] Error importing images:", error);
+  }
+}
+
+async function autoImportCombined(
+  imports: Array<{ type: string; [key: string]: unknown }>,
+  importMedia: (file: File) => Promise<{ success: boolean; error?: { message: string } }>,
+) {
+  console.log(`[ComfyUI Embedding] Processing combined import with ${imports.length} entries`);
+  let videoIndex = 0;
+  let audioIndex = 0;
+  for (const entry of imports) {
+    if (entry.type === "comfyui-import-video") {
+      if (entry.url) {
+        await autoImportVideo(entry.url as string, importMedia, videoIndex++);
+      } else if (entry.audioUrl) {
+        await autoImportAudio(entry.audioUrl as string, importMedia, audioIndex++);
+      }
+    } else if (entry.type === "comfyui-import-images") {
+      const imageUrls = (entry.imageUrls as string[]) || [];
+      if (imageUrls.length > 0) {
+        await autoImportImages(imageUrls, importMedia);
+      }
+    }
+  }
+  console.log("[ComfyUI Embedding] Combined import complete");
+}
+
 async function autoImportAudio(
   audioUrl: string,
   importMedia: (file: File) => Promise<{ success: boolean; error?: { message: string } }>,
+  index = 0,
 ) {
   try {
     console.log("[ComfyUI Embedding] Fetching audio from:", audioUrl);
@@ -305,7 +388,8 @@ async function autoImportAudio(
     }
 
     const blob = await response.blob();
-    const file = new File([blob], "comfyui_audio.wav", { type: "audio/wav" });
+    const filename = `comfyui_audio_${String(index).padStart(4, "0")}.wav`;
+    const file = new File([blob], filename, { type: "audio/wav" });
 
     console.log("[ComfyUI Embedding] Importing audio, size:", blob.size);
     const result = await importMedia(file);

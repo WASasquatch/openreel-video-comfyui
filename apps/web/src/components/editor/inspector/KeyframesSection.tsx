@@ -505,7 +505,26 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
   }, [selectedProperty]);
 
   const currentValue = useMemo(() => {
-    if (!selectedProperty || propertyKeyframes.length === 0) {
+    if (!selectedProperty) return propertyDef?.defaultValue ?? 0;
+
+    if (propertyKeyframes.length === 0) {
+      // Read the actual value from the clip's transform instead of the
+      // hardcoded default so that the first keyframe captures the user's
+      // manually-set transform (e.g. scale 0.5 stays 0.5, not 1).
+      if (clip?.transform && (selectedProperty.startsWith("position.") ||
+          selectedProperty.startsWith("scale.") ||
+          selectedProperty === "rotation" ||
+          selectedProperty === "opacity")) {
+        const t = clip.transform;
+        switch (selectedProperty) {
+          case "position.x": return t.position.x;
+          case "position.y": return t.position.y;
+          case "scale.x": return t.scale.x;
+          case "scale.y": return t.scale.y;
+          case "rotation": return t.rotation;
+          case "opacity": return t.opacity;
+        }
+      }
       return propertyDef?.defaultValue ?? 0;
     }
     // Convert absolute timeline time to clip-local time for interpolation
@@ -654,7 +673,7 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
               Keyframes ({propertyKeyframes.length})
             </span>
           </div>
-          <div className="space-y-1.5 max-h-48 overflow-visible">
+          <div className="space-y-1.5">
             {propertyKeyframes.map((kf) => (
               <KeyframeItem
                 key={kf.id}

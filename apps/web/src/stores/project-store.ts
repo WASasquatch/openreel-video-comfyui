@@ -586,9 +586,31 @@ export const useProjectStore = create<ProjectState>()(
             mediaType = "image";
           }
 
+          // ── Placeholder matching ──────────────────────────────────
+          // If the project has placeholder media items (from a JSON import),
+          // try to match this incoming file to one so we reuse the same ID
+          // and all clip references / effects stay intact.
+          const placeholders = project.mediaLibrary.items.filter(
+            (m) => m.isPlaceholder && !m.blob && m.type === mediaType,
+          );
+
+          let matchedPlaceholder: MediaItem | undefined;
+          if (placeholders.length > 0) {
+            // Prefer exact name match first
+            matchedPlaceholder = placeholders.find(
+              (p) => p.name === file.name,
+            );
+            // Fallback: first unresolved placeholder of the same type
+            if (!matchedPlaceholder) {
+              matchedPlaceholder = placeholders[0];
+            }
+          }
+
+          const resolvedId = matchedPlaceholder?.id || uuidv4();
+
           const newMediaItem: MediaItem = {
-            id: uuidv4(),
-            name: file.name,
+            id: resolvedId,
+            name: matchedPlaceholder?.name || file.name,
             type: mediaType,
             fileHandle: null,
             blob: file,
@@ -607,13 +629,27 @@ export const useProjectStore = create<ProjectState>()(
             waveformData: processedMedia.waveformData?.peaks || null,
             filmstripThumbnails:
               filmstripThumbnails.length > 0 ? filmstripThumbnails : undefined,
+            isPlaceholder: false,
           };
+
+          let updatedItems: MediaItem[];
+          if (matchedPlaceholder) {
+            // Replace the placeholder in-place, preserving array order
+            console.log(
+              `[ProjectStore] Replacing placeholder "${matchedPlaceholder.name}" (${matchedPlaceholder.id}) with imported media`,
+            );
+            updatedItems = project.mediaLibrary.items.map((m) =>
+              m.id === matchedPlaceholder!.id ? newMediaItem : m,
+            );
+          } else {
+            updatedItems = [...project.mediaLibrary.items, newMediaItem];
+          }
 
           const updatedProject = {
             ...project,
             mediaLibrary: {
               ...project.mediaLibrary,
-              items: [...project.mediaLibrary.items, newMediaItem],
+              items: updatedItems,
             },
             modifiedAt: Date.now(),
           };

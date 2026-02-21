@@ -49,10 +49,15 @@ export const ScriptViewDialog: React.FC<ScriptViewDialogProps> = ({
 
   const exportedJson = useMemo(() => {
     if (!project) return "";
-    return serializer.exportToJsonWithMetadata(
-      project,
-      `Exported from ${project.name}`,
-    );
+    try {
+      return serializer.exportToJsonWithMetadata(
+        project,
+        `Exported from ${project.name}`,
+      );
+    } catch (error) {
+      console.error("[ScriptView] Export failed:", error);
+      return `// Export error: ${error instanceof Error ? error.message : "Unknown serialization error"}`;
+    }
   }, [project, serializer]);
 
   const handleCopy = useCallback(async () => {
@@ -172,7 +177,7 @@ export const ScriptViewDialog: React.FC<ScriptViewDialogProps> = ({
               </Button>
               <div className="flex-1" />
               <a
-                href="/llm.txt"
+                href={`${import.meta.env.BASE_URL}llm.txt`}
                 download="openreel-llm-documentation.txt"
                 className="flex items-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm transition-colors"
               >

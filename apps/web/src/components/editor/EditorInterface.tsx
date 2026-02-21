@@ -165,7 +165,7 @@ export const EditorInterface: React.FC = () => {
     useKeyboardShortcuts();
   useAutoSave();
 
-  const { keyframeEditorOpen, setKeyframeEditorOpen, getSelectedClipIds } = useUIStore();
+  const { keyframeEditorOpen, setKeyframeEditorOpen, selectedItems } = useUIStore();
   const { project, updateClipKeyframes } = useProjectStore();
   const tracks = project.timeline.tracks;
 
@@ -173,7 +173,14 @@ export const EditorInterface: React.FC = () => {
   const [copiedKeyframes, setCopiedKeyframes] = React.useState<import("@openreel/core").Keyframe[]>([]);
 
   const selectedClip = React.useMemo(() => {
-    const selectedIds = getSelectedClipIds();
+    const selectedIds = selectedItems
+      .filter(
+        (s: { type: string; id: string }) =>
+          s.type === "clip" ||
+          s.type === "text-clip" ||
+          s.type === "shape-clip",
+      )
+      .map((s: { type: string; id: string }) => s.id);
     if (selectedIds.length === 0) return null;
     const clipId = selectedIds[0];
     for (const track of tracks) {
@@ -181,7 +188,7 @@ export const EditorInterface: React.FC = () => {
       if (clip) return clip;
     }
     return null;
-  }, [getSelectedClipIds, tracks]);
+  }, [selectedItems, tracks]);
 
   const handleUpdateKeyframe = React.useCallback(
     (keyframeId: string, updates: Partial<import("@openreel/core").Keyframe>) => {

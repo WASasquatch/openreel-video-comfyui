@@ -86,6 +86,8 @@ export interface UIState {
   motionPathMode: boolean;
   motionPathClipId: string | null;
   keyframeEditorOpen: boolean;
+  renderEngine: "browser" | "backend";
+  setRenderEngine: (engine: "browser" | "backend") => void;
   select: (item: SelectionItem, addToSelection?: boolean) => void;
   selectMultiple: (items: SelectionItem[]) => void;
   deselect: (itemId: string) => void;
@@ -529,6 +531,11 @@ export const useUIStore = create<UIState>()(
             showWelcomeScreen: skip ? false : get().showWelcomeScreen,
           });
         },
+
+        renderEngine: "browser" as "browser" | "backend",
+        setRenderEngine: (engine: "browser" | "backend") => {
+          set({ renderEngine: engine });
+        },
       }),
       {
         name: "openreel-ui-preferences",
@@ -544,6 +551,7 @@ export const useUIStore = create<UIState>()(
           showKeyframes: state.showKeyframes,
           autoScroll: state.autoScroll,
           skipWelcomeScreen: state.skipWelcomeScreen,
+          renderEngine: state.renderEngine,
           // NOT persisted: selectedItems, isDragging, contextMenu, activeModal, showWelcomeScreen
         }),
       },

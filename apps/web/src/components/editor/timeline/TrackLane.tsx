@@ -158,7 +158,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
       <div
         ref={laneRef}
         style={{ height: trackHeight }}
-        className={`relative z-0 overflow-hidden border-b border-border/50 transition-colors ${
+        className={`relative border-b border-border/50 transition-colors ${
           isDragOver
             ? "bg-primary/10 border-primary/30"
             : "bg-background-secondary/20"

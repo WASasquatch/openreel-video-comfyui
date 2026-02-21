@@ -681,15 +681,11 @@ export const Toolbar: React.FC = () => {
   const [isSendingToOutput, setIsSendingToOutput] = useState(false);
 
   const handleSendToOutput = useCallback(async () => {
-    console.log("[OpenReel] Send to Output clicked, project tracks:", project.timeline?.tracks?.length, "clips:", project.timeline?.tracks?.flatMap(t => t.clips).length);
+    const renderEngine = useUIStore.getState().renderEngine;
+    console.log("[OpenReel] Send to Output clicked, engine:", renderEngine, "tracks:", project.timeline?.tracks?.length, "clips:", project.timeline?.tracks?.flatMap(t => t.clips).length);
     setIsSendingToOutput(true);
     setExportState({ isExporting: true, progress: 0, phase: "Preparing export...", error: null, complete: false });
     try {
-      const engine = getExportEngine();
-      console.log("[OpenReel] Initializing export engine...");
-      await engine.initialize();
-      console.log("[OpenReel] Export engine initialized");
-
       const videoSettings: Partial<VideoExportSettings> = {
         width: project.settings.width,
         height: project.settings.height,
@@ -700,47 +696,31 @@ export const Toolbar: React.FC = () => {
         quality: 85,
       };
 
-      console.log("[OpenReel] Starting FFmpeg export with settings:", videoSettings);
-      const generator = engine.exportVideoWithFFmpeg(project, videoSettings);
-      let finalResult: ExportResult | undefined;
+      if (renderEngine === "backend") {
+        // ── Backend FFmpeg path ──────────────────────────────────────
+        console.log("[OpenReel] Using backend FFmpeg engine");
+        const { exportVideoWithBackendFFmpeg } = await import("@openreel/core");
+        const generator = exportVideoWithBackendFFmpeg(project, videoSettings);
+        let finalResult: ExportResult | undefined;
 
-      while (true) {
-        const { value, done } = await generator.next();
-        if (done) {
-          finalResult = value;
-          break;
+        while (true) {
+          const { value, done } = await generator.next();
+          if (done) {
+            finalResult = value;
+            break;
+          }
+          setExportState((prev: ExportState) => ({
+            ...prev,
+            progress: value.progress * 100,
+            phase: value.phase === "complete" ? "Complete!" : `Backend ${value.phase}...`,
+          }));
         }
-        setExportState((prev: ExportState) => ({
-          ...prev,
-          progress: value.progress * 100,
-          phase: value.phase === "complete" ? "Complete!" : `${value.phase}...`,
-        }));
-      }
 
-      console.log("[OpenReel] Export result:", { success: finalResult?.success, blobSize: finalResult?.blob?.size, error: finalResult?.error });
+        console.log("[OpenReel] Backend export result:", { success: finalResult?.success, error: finalResult?.error });
 
-      if (finalResult?.success && finalResult.blob) {
-        setExportState((prev: ExportState) => ({ ...prev, phase: "Uploading to ComfyUI..." }));
+        if (finalResult?.success) {
+          const savedFilename = (finalResult as ExportResult & { filename?: string }).filename || `openreel_render_${Date.now()}.mp4`;
 
-        const formData = new FormData();
-        const timestamp = Date.now();
-        const filename = `openreel_export_${timestamp}.mp4`;
-        formData.append("image", new File([finalResult.blob], filename, { type: "video/mp4" }));
-        formData.append("type", "input");
-        formData.append("overwrite", "true");
-
-        console.log("[OpenReel] Uploading", filename, "size:", finalResult.blob.size);
-        const uploadResponse = await fetch("/upload/image", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (uploadResponse.ok) {
-          const uploadResult = await uploadResponse.json();
-          const savedFilename = uploadResult.name || filename;
-          console.log("[OpenReel] Upload success:", savedFilename);
-
-          // Notify parent iframe
           if (window.parent !== window) {
             window.parent.postMessage({
               type: "openreel-video-output",
@@ -751,10 +731,75 @@ export const Toolbar: React.FC = () => {
 
           toast.success("Sent to Output", `Video saved as ${savedFilename}`);
         } else {
-          throw new Error("Upload failed: " + uploadResponse.statusText);
+          throw new Error(finalResult?.error?.message || "Backend export failed");
         }
       } else {
-        throw new Error(finalResult?.error?.message || "Export failed");
+        // ── Browser FFmpeg.wasm path (existing) ─────────────────────
+        const engine = getExportEngine();
+        console.log("[OpenReel] Using browser FFmpeg.wasm engine");
+        await engine.initialize();
+
+        const generator = engine.exportVideoWithFFmpeg(project, videoSettings);
+        let finalResult: ExportResult | undefined;
+
+        while (true) {
+          const { value, done } = await generator.next();
+          if (done) {
+            finalResult = value;
+            break;
+          }
+          setExportState((prev: ExportState) => ({
+            ...prev,
+            progress: value.progress * 100,
+            phase: value.phase === "complete" ? "Complete!" : `${value.phase}...`,
+          }));
+        }
+
+        console.log("[OpenReel] Export result:", { success: finalResult?.success, blobSize: finalResult?.blob?.size, error: finalResult?.error });
+
+        if (finalResult?.success && finalResult.blob) {
+          setExportState((prev: ExportState) => ({ ...prev, phase: "Uploading to ComfyUI..." }));
+
+          const formData = new FormData();
+          const timestamp = Date.now();
+          const filename = `openreel_export_${timestamp}.mp4`;
+          formData.append("image", new File([finalResult.blob], filename, { type: "video/mp4" }));
+          formData.append("type", "input");
+          formData.append("overwrite", "true");
+
+          console.log("[OpenReel] Uploading", filename, "size:", finalResult.blob.size);
+          const uploadResponse = await fetch("/upload/image", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (uploadResponse.ok) {
+            const uploadResult = await uploadResponse.json();
+            const savedFilename = uploadResult.name || filename;
+            console.log("[OpenReel] Upload success:", savedFilename);
+
+            // Write export marker so Unpack node can find it on re-run
+            fetch("/was/openreel_video/set_export_marker", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ filename: savedFilename }),
+            }).catch(() => {});
+
+            if (window.parent !== window) {
+              window.parent.postMessage({
+                type: "openreel-video-output",
+                filename: savedFilename,
+              }, "*");
+              console.log("[OpenReel] postMessage sent to parent:", savedFilename);
+            }
+
+            toast.success("Sent to Output", `Video saved as ${savedFilename}`);
+          } else {
+            throw new Error("Upload failed: " + uploadResponse.statusText);
+          }
+        } else {
+          throw new Error(finalResult?.error?.message || "Export failed");
+        }
       }
     } catch (error) {
       console.error("[OpenReel] Send to Output error:", error);
@@ -1110,23 +1155,64 @@ export const Toolbar: React.FC = () => {
         </Tooltip>
 
         {isEmbedded && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={handleSendToOutput}
-                disabled={isSendingToOutput || exportState.isExporting}
-                className="h-10 px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] transform hover:-translate-y-0.5"
-              >
-                <Upload size={14} />
-                <span className="text-sm tracking-wider">
-                  {isSendingToOutput ? "SENDING..." : "SEND TO OUTPUT"}
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Export and send video to ComfyUI</p>
-            </TooltipContent>
-          </Tooltip>
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className={`p-2 rounded-lg transition-colors text-xs font-medium flex items-center gap-1.5 ${
+                    useUIStore.getState().renderEngine === "backend"
+                      ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30"
+                      : "hover:bg-background-elevated text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  <Zap size={14} />
+                  <span className="hidden xl:inline">
+                    {useUIStore.getState().renderEngine === "backend" ? "Backend" : "Browser"}
+                  </span>
+                  <ChevronDown size={10} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem
+                  onClick={() => useUIStore.getState().setRenderEngine("browser")}
+                  className={`gap-2 ${useUIStore.getState().renderEngine === "browser" ? "bg-background-tertiary" : ""}`}
+                >
+                  <Film size={14} />
+                  <div>
+                    <div className="font-medium">Browser (FFmpeg.wasm)</div>
+                    <div className="text-[10px] text-text-muted">In-browser encoding</div>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => useUIStore.getState().setRenderEngine("backend")}
+                  className={`gap-2 ${useUIStore.getState().renderEngine === "backend" ? "bg-background-tertiary" : ""}`}
+                >
+                  <Zap size={14} className="text-yellow-400" />
+                  <div>
+                    <div className="font-medium">Backend (Native FFmpeg)</div>
+                    <div className="text-[10px] text-text-muted">System FFmpeg — faster</div>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleSendToOutput}
+                  disabled={isSendingToOutput || exportState.isExporting}
+                  className="h-10 px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg flex items-center gap-2 transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] transform hover:-translate-y-0.5"
+                >
+                  <Upload size={14} />
+                  <span className="text-sm tracking-wider">
+                    {isSendingToOutput ? "SENDING..." : "SEND TO OUTPUT"}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Export and send video to ComfyUI</p>
+              </TooltipContent>
+            </Tooltip>
+          </>
         )}
 
         <div className="relative">

@@ -45,3 +45,10 @@ export {
   CODEC_MAP,
   DEFAULT_UPSCALING_SETTINGS,
 } from "./export/types";
+
+export {
+  checkBackendFFmpeg,
+  exportVideoWithBackendFFmpeg,
+} from "./export/backend-export-engine";
+
+export type { BackendFFmpegInfo } from "./export/backend-export-engine";
